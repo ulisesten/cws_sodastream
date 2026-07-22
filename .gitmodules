@@ -1,0 +1,4 @@
+[submodule "third_party/cws"]
+	path = third_party/cws
+	url = /home/ulises/Documentos/Development/c_web_server.git
+	branch = devel
