@@ -11,7 +11,7 @@ endif()
 # Pull cws as a subdirectory (it ships its own CMakeLists that exports `cws`).
 add_subdirectory(third_party/cws)
 
-add_executable(cws_example_app main.c)
+add_executable(cws_example_app src/main.c)
 target_link_libraries(cws_example_app PRIVATE cws)
 set_target_properties(cws_example_app PROPERTIES
     OUTPUT_NAME cws_example_app
