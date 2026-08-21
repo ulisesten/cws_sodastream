@@ -11,6 +11,8 @@
 #include <stdlib.h>
 
 #include "api/v1/routes/videos/videos_routes.h"
+#include "api/v1/routes/videos/domain/videos_domain.h"
+#include "configuration.h"
 
 static cws_app_t* g_app = NULL;
 
@@ -42,25 +44,53 @@ static CWS_HANDLER(metrics_handler) {
     cws_response_send(res);
 }
 
+/* --- HLS estático ---------------------------------------------------------
+ * Emula: app.use("/hls/videos", express.static(dir, { setHeaders }))
+ * Define Content-Type y Cache-Control según la extensión del archivo.
+ * ------------------------------------------------------------------------- */
+
+static void hls_set_headers(cws_response_t* res, const char* file_path,
+                            void* user) {
+    (void)user;
+    const char* ext = strrchr(file_path, '.');
+    if (!ext) return;
+    if (strcasecmp(ext, ".m3u8") == 0) {
+        cws_response_header(res, "Content-Type",
+                            "%s", "application/vnd.apple.mpegurl");
+        cws_response_header(res, "Cache-Control", "%s", "no-cache");
+    } else if (strcasecmp(ext, ".ts") == 0) {
+        cws_response_header(res, "Content-Type", "%s", "video/mp2t");
+        cws_response_header(res, "Cache-Control", "%s",
+                            "public, max-age=31536000");
+    }
+}
+
 /* --- main --------------------------------------------------------------- */
 
 int main(void) {
     g_app = cws_app_new();
     if (!g_app) return 1;
 
-    /* Load .env (PORT, etc.) */
+    /* Load .env (PORT, DB_*, etc.) */
     cws_app_env_file(g_app, ".env");
 
-    /* Read PORT from .env, fallback to 8181 */
-    const char* port_str = cws_app_env_get_or(g_app, "PORT", "8181");
-    int port = atoi(port_str);
-    if (port < 1 || port > 65535) port = 8181;
+    /* Configuración central (env vars) */
+    app_config_t* cfg = configuration_new(g_app);
+    if (!cfg) {
+        fprintf(stderr, "configuration_new falló\n");
+        cws_app_free(g_app);
+        return 1;
+    }
 
-    cws_app_port(g_app, port);
+    cws_app_port(g_app, cfg->port);
+    int port = cfg->port;
     cws_app_bind(g_app, "0.0.0.0");
     cws_app_pin(g_app, 1);
     cws_app_workers(g_app, 0);
     cws_app_log_level(g_app, CWS_LOG_INFO);
+
+    /* Inicializa el acceso a datos del módulo de videos */
+    videos_domain_init(g_app);
 
     /* Global middleware: logger + CORS on every request */
     cws_app_use(g_app, cws_mw_logger);
@@ -78,7 +108,24 @@ int main(void) {
      */
     cws_app_mount(g_app, "/api/v1/videos", videos_routes());
 
-    fprintf(stderr, "cws_sodastream starting on port %d (PORT from .env)\n", port);
+    /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
+     * /hls/videos con Content-Type/Cache-Control por extensión. */
+    {
+        const char* hls_dir = cws_app_env_get_or(g_app, "HLS_DIR",
+                                                 "public/hls/videos");
+        cws_static_options_t opts = {
+            .prefix = "/hls/videos",
+            .dir = hls_dir,
+            .index = NULL,
+            .set_headers = hls_set_headers,
+            .user = NULL,
+        };
+        cws_app_static_mount(g_app, &opts);
+    }
+
+    configuration_free(cfg);
+    fprintf(stderr, "cws_sodastream starting on port %d (PORT from .env)\n",
+            port);
     int rc = cws_app_run(g_app);
     cws_app_free(g_app);
     return rc == CWS_OK ? 0 : 1;
