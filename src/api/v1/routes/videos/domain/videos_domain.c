@@ -16,6 +16,9 @@
 
 #define VIDEOS_DB "soda_stream"
 
+/// Sp Consultas
+#define CAT_VIDEOS_MAS_VISTOS_CONS 7;
+
 static sql_eject_t* g_sql = NULL;
 
 void videos_domain_init(const cws_app_t* app) {
@@ -36,7 +39,7 @@ void videos_domain_init(const cws_app_t* app) {
  * videos_domain.js get_videos). El resultado tipado se serializa a JSON y se
  * entrega como body de la respuesta.
  */
-void get_all_videos(cws_request_t* req, cws_response_t* res) {
+void get_popular_videos(cws_request_t* req, cws_response_t* res) {
     (void)req;
 
     if (!g_sql) {
@@ -46,8 +49,8 @@ void get_all_videos(cws_request_t* req, cws_response_t* res) {
 
     sql_param_t params[1];
     params[0].name = "tipoConsulta";
-    params[0].type = SQL_PT_STRING;
-    params[0].val.as_string = "CAT_VIDEOS_CONS";
+    params[0].type = SQL_COL_INT;
+    params[0].val.as_int = CAT_VIDEOS_MAS_VISTOS_CONS;
 
     sql_result_t out;
     int rc = sql_eject_store(g_sql, "procCatVideosCons", VIDEOS_DB, params, 1, &out);
