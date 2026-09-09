@@ -26,6 +26,14 @@ typedef struct app_config {
     char* db_database;       /* DB_DATABASE */
     int   db_encrypt;        /* DB_ENCRYPT != "false" */
     int   db_trust_cert;     /* DB_TRUST_CERTIFICATE != "false" */
+
+    /* Tokens / sesión (jwt.c, authorization.c). */
+    char* secret_key;        /* SECRET_KEY: clave del JWT y derivación del IV */
+    char* x_vector;          /* X_VECTOR: clave GOST 28147-89 (8 palabras hex
+                                  separadas por coma) */
+    int   access_token_expiration_minutes; /* ACCESS_TOKEN_EXPIRATION_MINUTES, default 15 */
+    int   refresh_token_expiration_days;   /* REFRESH_TOKEN_EXPIRATION_DAYS, default 7 */
+    int   is_production;     /* NODE_ENV == "production" (cookies secure) */
 } app_config_t;
 
 /* `app` puede ser NULL para leer de getenv() directamente. */

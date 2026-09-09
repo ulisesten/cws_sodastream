@@ -45,13 +45,27 @@ app_config_t* configuration_new(const cws_app_t* app) {
     cfg->db_password = dup_or(env_get_or(app, "DB_PASSWORD", NULL), "");
     cfg->db_database = dup_or(env_get_or(app, "DB_DATABASE", NULL), "");
 
+    cfg->secret_key = dup_or(env_get_or(app, "SECRET_KEY", NULL), "");
+    cfg->x_vector = dup_or(env_get_or(app, "X_VECTOR", NULL), "");
+    const char* atm = env_get_or(app, "ACCESS_TOKEN_EXPIRATION_MINUTES", "15");
+    cfg->access_token_expiration_minutes = atoi(atm);
+    if (cfg->access_token_expiration_minutes < 1)
+        cfg->access_token_expiration_minutes = 15;
+    const char* rtd = env_get_or(app, "REFRESH_TOKEN_EXPIRATION_DAYS", NULL);
+    cfg->refresh_token_expiration_days = rtd ? atoi(rtd) : 7;
+    if (cfg->refresh_token_expiration_days < 1)
+        cfg->refresh_token_expiration_days = 7;
+    const char* env_name = env_get_or(app, "NODE_ENV", "production");
+    cfg->is_production = strcmp(env_name, "production") == 0;
+
     const char* e = env_get(app, "DB_ENCRYPT");
     cfg->db_encrypt = !(e && !strcmp(e, "false"));
     const char* t = env_get(app, "DB_TRUST_CERTIFICATE");
     cfg->db_trust_cert = !(t && !strcmp(t, "false"));
 
     if (!cfg->db_driver || !cfg->db_server || !cfg->db_port ||
-        !cfg->db_user || !cfg->db_password || !cfg->db_database) {
+        !cfg->db_user || !cfg->db_password || !cfg->db_database ||
+        !cfg->secret_key || !cfg->x_vector) {
         configuration_free(cfg);
         return NULL;
     }
@@ -66,5 +80,7 @@ void configuration_free(app_config_t* cfg) {
     free(cfg->db_user);
     free(cfg->db_password);
     free(cfg->db_database);
+    free(cfg->secret_key);
+    free(cfg->x_vector);
     free(cfg);
 }
