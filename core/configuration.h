@@ -26,6 +26,14 @@ typedef struct app_config {
     char* db_database;       /* DB_DATABASE */
     int   db_encrypt;        /* DB_ENCRYPT != "false" */
     int   db_trust_cert;     /* DB_TRUST_CERTIFICATE != "false" */
+
+    /* Criptografía GOST (encrypt.c): clave del cifrado y vector de
+     * sincronización (IV). */
+    char* secret_key;        /* SECRET_KEY: cadena del despliegue; sus
+                                  primeros 8 bytes derivan el IV del cifrado */
+    char* x_vector;          /* X_VECTOR: clave GOST 28147-89 como 8 palabras
+                                  hex separadas por coma, p. ej.
+                                  "0x33206D54,0x326C6568,..." */
 } app_config_t;
 
 /* `app` puede ser NULL para leer de getenv() directamente. */

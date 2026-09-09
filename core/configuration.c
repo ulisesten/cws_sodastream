@@ -45,13 +45,17 @@ app_config_t* configuration_new(const cws_app_t* app) {
     cfg->db_password = dup_or(env_get_or(app, "DB_PASSWORD", NULL), "");
     cfg->db_database = dup_or(env_get_or(app, "DB_DATABASE", NULL), "");
 
+    cfg->secret_key = dup_or(env_get_or(app, "SECRET_KEY", NULL), "");
+    cfg->x_vector = dup_or(env_get_or(app, "X_VECTOR", NULL), "");
+
     const char* e = env_get(app, "DB_ENCRYPT");
     cfg->db_encrypt = !(e && !strcmp(e, "false"));
     const char* t = env_get(app, "DB_TRUST_CERTIFICATE");
     cfg->db_trust_cert = !(t && !strcmp(t, "false"));
 
     if (!cfg->db_driver || !cfg->db_server || !cfg->db_port ||
-        !cfg->db_user || !cfg->db_password || !cfg->db_database) {
+        !cfg->db_user || !cfg->db_password || !cfg->db_database ||
+        !cfg->secret_key || !cfg->x_vector) {
         configuration_free(cfg);
         return NULL;
     }
@@ -66,5 +70,7 @@ void configuration_free(app_config_t* cfg) {
     free(cfg->db_user);
     free(cfg->db_password);
     free(cfg->db_database);
+    free(cfg->secret_key);
+    free(cfg->x_vector);
     free(cfg);
 }

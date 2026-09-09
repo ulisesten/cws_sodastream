@@ -11,6 +11,11 @@ endif()
 # Pull cws as a subdirectory (it ships its own CMakeLists that exports `cws`).
 add_subdirectory(third_party/cws)
 
+# GOST cryptography library (feature `encrypt` en core/).
+set(GOST_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
+set(GOST_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/c_gost_encryption)
+
 find_package(ODBC REQUIRED)
 
 # Gather all .c under src/ and core/ recursively.
@@ -19,7 +24,7 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/core/*.c")
 
 add_executable(cws_sodastream ${APP_SOURCES})
-target_link_libraries(cws_sodastream PRIVATE cws ODBC::ODBC)
+target_link_libraries(cws_sodastream PRIVATE cws ODBC::ODBC gost::gost)
 target_include_directories(cws_sodastream PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/core)
