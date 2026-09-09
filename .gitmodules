@@ -2,6 +2,3 @@
 	path = third_party/cws
 	url = https://github.com/ulisesten/c_web_server.git
 	branch = devel
-[submodule "third_party/c_gost_encryption"]
-	path = third_party/c_gost_encryption
-	url = https://github.com/ulisesten/c_gost_encryption.git
