@@ -40,6 +40,20 @@ typedef struct app_config {
 app_config_t* configuration_new(const cws_app_t* app);
 void          configuration_free(app_config_t* cfg);
 
+/**
+ * \brief Valor de una variable del .env por su clave (equivalente a
+ *        process.env en la referencia).
+ *
+ * Despacha la clave con un switch sobre su hash (core/hash_table.c); los
+ * case son constantes generadas por scripts/gen_env_hashes.sh. Claves
+ * desconocidas caen a una comparación directa (fallback del default).
+ *
+ * \param[in] key clave, p. ej. "DB_USER" o "PORT".
+ * \return valor o NULL si no está configurada. El puntero es propiedad
+ *         del env (válido hasta que el app se libere).
+ */
+const char* cfg_getenv(const char* key);
+
 #ifdef __cplusplus
 }
 #endif

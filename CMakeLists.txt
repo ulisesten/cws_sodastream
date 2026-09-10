@@ -25,6 +25,10 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
 
 add_executable(cws_sodastream ${APP_SOURCES})
 target_link_libraries(cws_sodastream PRIVATE cws ODBC::ODBC gost::gost)
+
+# Generador de tablas hash para cfg_getenv (scripts/gen_env_hashes.sh).
+add_executable(hashgen EXCLUDE_FROM_ALL scripts/hashgen.c core/hash_table.c)
+target_include_directories(hashgen PRIVATE core)
 target_include_directories(cws_sodastream PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/core)
