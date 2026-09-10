@@ -21,8 +21,8 @@
 
 static sql_eject_t* g_sql = NULL;
 
-void videos_domain_init(const cws_app_t* app) {
-    app_config_t* cfg = configuration_new(app);
+void videos_domain_init(void) {
+    app_config_t* cfg = configuration_new();
     if (!cfg) return;
     sql_eject_t* se = sql_eject_new(cfg);
     configuration_free(cfg);

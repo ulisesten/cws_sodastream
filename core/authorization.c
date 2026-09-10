@@ -165,8 +165,8 @@ void authorization_free(authorization_t* auth) {
     free(auth);
 }
 
-void authorization_init(const cws_app_t* app) {
-    app_config_t* cfg = configuration_new(app);
+void authorization_init(void) {
+    app_config_t* cfg = configuration_new();
     if (!cfg) return;
     authorization_t* auth = authorization_new(cfg);
     configuration_free(cfg);

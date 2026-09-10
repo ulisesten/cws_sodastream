@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     }
 
     for (int i = 1; i < argc; i++) {
-        printf("        case 0x%08xu: /* %s */\n            return env_get(app, \"%s\");\n",
+        printf("        case 0x%08xu: /* %s */\n            return env_get(\"%s\");\n",
                hash_string(argv[i]), argv[i], argv[i]);
     }
     return 0;

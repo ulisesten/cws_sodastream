@@ -1,8 +1,6 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
-#include "cws/cws.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,10 +8,11 @@ extern "C" {
 /*
  * Configuración central de la aplicación.
  *
- * Equivalente a streaming_server/src/server/app/core/configuration.js.
- * Lee las variables de entorno (o del .env cargado por el app cws) una sola
- * vez y las expone como struct. Las cadenas son propiedad del struct y deben
- * liberarse con configuration_free().
+ * Equivalente a streaming_server/src/server/app/core/configuration.js
+ * (dotenv incluido: el módulo carga el .env y lo exporta al entorno del
+ * proceso en su primer uso, como dotenv.config() muta process.env).
+ *
+ * No depende del handle del app de cws: el .env es propiedad del módulo.
  */
 
 typedef struct app_config {
@@ -36,23 +35,34 @@ typedef struct app_config {
     int   is_production;     /* NODE_ENV == "production" (cookies secure) */
 } app_config_t;
 
-/* `app` puede ser NULL para leer de getenv() directamente. */
-app_config_t* configuration_new(const cws_app_t* app);
+/**
+ * \brief Construye la configuración leyendo el .env y el entorno.
+ *
+ * En su primer uso carga ".env" (cwd) y lo exporta al entorno del proceso;
+ * las llamadas siguientes reutilizan el env ya cargado. Si el archivo no
+ * existe, se usa solo el entorno del proceso.
+ *
+ * \return config malloc (liberar con configuration_free), o NULL.
+ */
+app_config_t* configuration_new(void);
 void          configuration_free(app_config_t* cfg);
 
 /**
- * \brief Valor de una variable del .env por su clave (equivalente a
- *        process.env en la referencia).
+ * \brief Valor de una variable del .env/entorno por su clave (equivalente
+ *        a process.env en la referencia).
  *
  * Despacha la clave con un switch sobre su hash (core/hash_table.c); los
  * case son constantes generadas por scripts/gen_env_hashes.sh. Claves
  * desconocidas caen a una comparación directa (fallback del default).
  *
  * \param[in] key clave, p. ej. "DB_USER" o "PORT".
- * \return valor o NULL si no está configurada. El puntero es propiedad
- *         del env (válido hasta que el app se libere).
+ * \return valor o NULL si no está configurada. Válido hasta el fin del
+ *         proceso (o configuration_shutdown).
  */
 const char* cfg_getenv(const char* key);
+
+/** Libera el env cargado por el módulo (opcional; al cierre). */
+void configuration_shutdown(void);
 
 #ifdef __cplusplus
 }

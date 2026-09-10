@@ -6,7 +6,7 @@
 
 /* Inicializa el acceso a datos del módulo de users (config + sql_eject).
  * Debe llamarse una vez tras cargar el .env del app. */
-void users_domain_init(const cws_app_t* app);
+void users_domain_init(void);
 void users_domain_shutdown(void);
 
 /**

@@ -74,11 +74,9 @@ int main(void) {
     g_app = cws_app_new();
     if (!g_app) return 1;
 
-    /* Load .env (PORT, DB_*, etc.) */
-    cws_app_env_file(g_app, ".env");
-
-    /* Configuración central (env vars) */
-    app_config_t* cfg = configuration_new(g_app);
+    /* Configuración central: carga .env, lo exporta al entorno y expone
+     * cfg_getenv(). Ya no necesita el handle del app. */
+    app_config_t* cfg = configuration_new();
     if (!cfg) {
         fprintf(stderr, "configuration_new falló\n");
         cws_app_free(g_app);
@@ -93,12 +91,12 @@ int main(void) {
     cws_app_log_level(g_app, CWS_LOG_INFO);
 
     /* Inicializa el acceso a datos del módulo de videos */
-    videos_domain_init(g_app);
+    videos_domain_init();
 
     /* Servicios de sesión: authorization (tokens GOST + signin) y
      * users_domain (DAO de procUsersProc/Cons). */
-    authorization_init(g_app);
-    users_domain_init(g_app);
+    authorization_init();
+    users_domain_init();
 
     /* Global middleware: logger + CORS on every request */
     cws_app_use(g_app, cws_mw_logger);
@@ -125,8 +123,8 @@ int main(void) {
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */
     {
-        const char* hls_dir = cws_app_env_get_or(g_app, "HLS_DIR",
-                                                 "public/hls/videos");
+        const char* hls_dir = cfg_getenv("HLS_DIR");
+        if (!hls_dir || !*hls_dir) hls_dir = "public/hls/videos";
         cws_static_options_t opts = {
             .prefix = "/hls/videos",
             .dir = hls_dir,

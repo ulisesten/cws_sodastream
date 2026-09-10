@@ -59,7 +59,7 @@ void authorization_free(authorization_t* auth);
  * construye el servicio desde el env del app. Llamar una vez en main() tras
  * cargar el .env. authorization_shutdown() la libera.
  */
-void authorization_init(const cws_app_t* app);
+void authorization_init(void);
 void authorization_shutdown(void);
 
 /* ------------------------------------------------------------------ */
