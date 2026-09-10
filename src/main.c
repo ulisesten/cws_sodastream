@@ -12,6 +12,9 @@
 
 #include "api/v1/routes/videos/videos_routes.h"
 #include "api/v1/routes/videos/domain/videos_domain.h"
+#include "api/v1/routes/users/users_routes.h"
+#include "api/v1/routes/users/domain/users_domain.h"
+#include "authorization.h"
 #include "configuration.h"
 
 static cws_app_t* g_app = NULL;
@@ -92,6 +95,11 @@ int main(void) {
     /* Inicializa el acceso a datos del módulo de videos */
     videos_domain_init(g_app);
 
+    /* Servicios de sesión: authorization (tokens GOST + signin) y
+     * users_domain (DAO de procUsersProc/Cons). */
+    authorization_init(g_app);
+    users_domain_init(g_app);
+
     /* Global middleware: logger + CORS on every request */
     cws_app_use(g_app, cws_mw_logger);
     cws_app_use(g_app, cws_mw_cors);
@@ -107,6 +115,12 @@ int main(void) {
      *   GET /videos/:id      -> get_video_by_id
      */
     cws_app_mount(g_app, "/api/v1/videos", videos_routes());
+
+    /* Sub-router del módulo users — rutas relativas al punto de montaje:
+     *   POST /api/v1/users/signin -> login (emite cookies)
+     *   POST /api/v1/users/       -> alta de usuario
+     */
+    cws_app_mount(g_app, "/api/v1/users", users_routes());
 
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */

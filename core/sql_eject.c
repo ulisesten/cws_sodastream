@@ -537,8 +537,10 @@ static void free_sp_params(sp_param_t* arr, size_t n) {
 
 static char* build_call(const char* sp_name, const sp_param_t* params,
                         size_t n) {
+    /* EXEC <sp> + por parámetro ", @name=?" (el primero lleva espacio
+     * inicial); se presupuestan 5 bytes por parámetro + margen. */
     size_t len = strlen("EXEC ") + strlen(sp_name) + 2;
-    for (size_t i = 0; i < n; i++) len += strlen(params[i].name) + 4;
+    for (size_t i = 0; i < n; i++) len += strlen(params[i].name) + 6;
     char* s = (char*)malloc(len + 1);
     if (!s) return NULL;
     size_t off = 0;

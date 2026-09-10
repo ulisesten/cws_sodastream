@@ -6,3 +6,4 @@ build*/
 *.zst
 
 .env
+*.http
