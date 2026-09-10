@@ -426,10 +426,13 @@ int json_get_int(const char* json, const char* name, int64_t* out) {
 /* primitivas GOST compartidas                                         */
 /* ------------------------------------------------------------------ */
 
+/* Streebog-256 de un texto con el convenio de la referencia JS:
+ * el texto se codifica a UTF-16LE (Код.Строку_в_байты) antes de hashear,
+ * igual que EncryptService.hash — los digests son idénticos a los del
+ * servidor Node (gost/gost/text). */
 static char* gost_hash_hex(const char* data) {
     uint8_t digest[GOST_HASH_256 / 8];
-    if (gost_hash((const uint8_t*)data, strlen(data), GOST_HASH_256,
-                  digest) != GOST_OK)
+    if (gost_hash_text(data, strlen(data), GOST_HASH_256, digest) != GOST_OK)
         return NULL;
     static const char digits[] = "0123456789abcdef";
     char* out = (char*)malloc(sizeof(digest) * 2 + 1);
