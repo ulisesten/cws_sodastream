@@ -601,6 +601,9 @@ char* jwt_write_gost_token(const jwt_t* jwt, const jwt_user_t* user) {
     char* sign = payload_sign_hex(jwt, id, user->ip, NULL);
     if (!sign) return NULL;
 
+    char session_type[8];
+    snprintf(session_type, sizeof(session_type), "%d", JWT_WEB_SESSION_TYPE);
+
     sbuf_t sb = {0};
     int ok = sbuf_append_str(&sb, "{\"id\":") == 0 &&
              sbuf_append_str(&sb, id) == 0 &&
@@ -609,7 +612,7 @@ char* jwt_write_gost_token(const jwt_t* jwt, const jwt_user_t* user) {
              sbuf_append_str(&sb, ",\"exp\":") == 0 &&
              sbuf_append_str(&sb, exp) == 0 &&
              sbuf_append_str(&sb, ",\"session_type\":") == 0 &&
-             sbuf_append_str(&sb, "1") == 0 &&
+             sbuf_append_str(&sb, session_type) == 0 &&
              sbuf_append_str(&sb, ",\"user\":") == 0 &&
              append_user_json(&sb, user) == 0 &&
              sbuf_append_str(&sb, ",\"sign\":") == 0 &&
@@ -703,13 +706,16 @@ char* jwt_write_refresh_token(const jwt_t* jwt, const jwt_user_t* user) {
     char* sign = payload_sign_hex(jwt, id, "refresh", NULL);
     if (!sign) return NULL;
 
+    char session_type[8];
+    snprintf(session_type, sizeof(session_type), "%d", JWT_WEB_SESSION_TYPE);
+
     sbuf_t sb = {0};
     int ok = sbuf_append_str(&sb, "{\"id\":") == 0 &&
              sbuf_append_str(&sb, id) == 0 &&
              sbuf_append_str(&sb, ",\"exp\":") == 0 &&
              sbuf_append_str(&sb, exp) == 0 &&
              sbuf_append_str(&sb, ",\"type\":\"refresh\",\"session_type\":") == 0 &&
-             sbuf_append_str(&sb, "1") == 0 &&
+             sbuf_append_str(&sb, session_type) == 0 &&
              sbuf_append_str(&sb, ",\"user\":") == 0 &&
              append_user_json(&sb, user) == 0 &&
              sbuf_append_str(&sb, ",\"sign\":") == 0 &&
