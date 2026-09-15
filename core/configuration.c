@@ -103,6 +103,10 @@ const char* cfg_getenv(const char* key) {
             return env_get("WEB_SESSION_TYPE");
         case 0xbca4f0e9u: /* MOBILE_SESSION_TYPE */
             return env_get("MOBILE_SESSION_TYPE");
+        case 0x57c85321u: /* PASSWORD_KDF_ITERATIONS */
+            return env_get("PASSWORD_KDF_ITERATIONS");
+        case 0x8e3a3a39u: /* PASSWORD_PEPPER */
+            return env_get("PASSWORD_PEPPER");
         default:
             return env_get(key);
     }

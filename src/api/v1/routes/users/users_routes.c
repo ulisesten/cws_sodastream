@@ -20,6 +20,7 @@
 
 #include "authorization.h"
 #include "jwt.h"
+#include "password.h"
 #include "configuration.h"
 
 /* ------------------------------------------------------------------ */
@@ -211,16 +212,9 @@ static CWS_HANDLER(user_new_handler) {
 
     hashed_email = jwt_core_hash_hex(email);
 
-    /* hashed_contrasena = hash(contrasena.trim()). */
-    char* pw = password;
-    while (*pw == ' ' || *pw == '\t') pw++;
-    size_t pw_len = strlen(pw);
-    while (pw_len > 0 && (pw[pw_len - 1] == ' ' || pw[pw_len - 1] == '\t'))
-        pw[--pw_len] = '\0';
-    char save = pw[pw_len];
-    pw[pw_len] = '\0';
-    hashed_pass = jwt_core_hash_hex(pw);
-    pw[pw_len] = save;
+    /* Contraseña: PBKDF2-HMAC-Streebog + salt + pepper (core/password). Se
+     * hashea tal cual (sin trim) para que coincida con la verificación. */
+    hashed_pass = password_hash(password);
     if (!hashed_email || !hashed_pass) {
         reject_json(res, 500, "Error al registrar usuario");
         goto done;

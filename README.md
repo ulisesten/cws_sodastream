@@ -74,12 +74,20 @@ Pendientes **por corregir**, ordenados por severidad.
   solo `id`+cola; `exp`, `session_type` y los campos de `user` quedaban sin
   integridad (CFB maleable). Ya se firma una cadena canónica con todos los
   campos — ver `sign_build()` en `core/jwt_core.c` (commit `066ed9f`).
+- **#2 Contraseñas con hash rápido y sin salt.** Ahora `core/password.{h,c}`
+  usa **PBKDF2-HMAC-Streebog** (feature `gost/kdf`) con salt aleatorio de 16 B
+  y pepper opcional del servidor (`PASSWORD_PEPPER`). Formato almacenado
+  auto-descriptivo: `$gost-pbkdf2$512$<iter>$<salt_hex>$<dk_hex>`; iteraciones
+  configurables con `PASSWORD_KDF_ITERATIONS` (default 100000 ≈ 270 ms).
+  `password_verify()` sigue aceptando el formato legacy (Streebog-256) y avisa
+  con `PASSWORD_OK_LEGACY` para rehashear. Requirió ampliar
+  `cat_usuarios.usu_contrasena` y `@usu_contrasena` de `procUsersProc` a
+  `NVARCHAR(255)` (ver `sql/migrations/`).
 
 ### ⬜ Pendientes
 
 | # | Sev. | Tema | Dónde |
 |---|------|------|-------|
-| 2 | Alta | Hash de contraseñas rápido y sin salt | `src/api/v1/routes/users/users_routes.c:222`, `core/jwt_core.c` (`jwt_core_verify_password`) |
 | 3 | Alta | Sin rate limiting ni lockout en login | `core/authorization*.c`, `src/api/v1/routes/{users,mobile}` |
 | 4 | Media | IV fijo derivado del secreto (cifrado determinista) | `core/jwt_core.c:431` |
 | 5 | Media | JSON injection en respuestas móviles | `core/authorization_mobile.c:446`, `src/api/v1/routes/mobile/mobile_routes.c:32` |
@@ -92,9 +100,6 @@ Pendientes **por corregir**, ordenados por severidad.
 
 Detalle y remediación sugerida:
 
-- **#2 Contraseñas.** Se guarda `Streebog-256(password.trim())` (hash rápido,
-  sin salt). `usu_salt` se genera pero **no participa** del hash.
-  → Usar KDF (PBKDF2 ≥ 100k o Argon2/bcrypt) con el `usu_salt` por usuario.
 - **#3 Rate limit.** Ningún límite en `/api/v1/users/signin` ni
   `/api/v1/auth/mobile/signin`; la lib trae `cws_mw_ratelimit_simple` sin usar.
   → Aplicar el middleware + backoff/bloqueo por cuenta.

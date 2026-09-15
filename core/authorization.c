@@ -11,6 +11,8 @@
 
 #include "authorization.h"
 
+#include "password.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <inttypes.h>
@@ -526,7 +528,11 @@ int authorization_signin(cws_request_t* req, cws_response_t* res,
     char* usu_salt = dao_str(dao, "usu_salt");
     sql_result_free(dao);
 
-    if (!jwt_gost_hash_verify(g_auth->jwt, password, stored_hash ? stored_hash : "")) {
+    password_result_t pr = password_verify(password, stored_hash ? stored_hash : "");
+    if (pr == PASSWORD_OK_LEGACY)
+        cws_log_warn("signin: hash legacy de usu_id=%lld (conviene rehashear)",
+                     (long long)usu_id);
+    if (pr != PASSWORD_OK && pr != PASSWORD_OK_LEGACY) {
         free(stored_hash);
         free(usu_nombre);
         free(usu_salt);
