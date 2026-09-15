@@ -388,15 +388,69 @@ bool jwt_safe_compare(const char* a, const char* b) {
     return diff == 0;
 }
 
-/* sign = hash(secret + A + B); A = id o "rand", B = tail (puede ser NULL) */
-static char* payload_sign(const jwt_core_t* core, const char* A,
-                          const char* B) {
+/* ------------------------------------------------------------------ */
+/* firma canónica del payload                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * El sign autentica TODOS los campos relevantes del token (no solo id):
+ *
+ *   secret US kind US id US usu_id US session_type US exp US
+ *   len:correo US len:nombre US len:ip US len:salt US len:rand US len:tail
+ *
+ * - kind: 'a' (access), 'r' (refresh), 'c' (csrf) → separa dominios.
+ * - US es el separador de unidad 0x1f; los campos string van con prefijo
+ *   "len:" (netstring) para que ningún valor pueda confundir los límites.
+ * - CSRF no tiene id/usuarios: van en 0 / vacío.
+ * - `tail` es el discriminador de canal (p.ej. "mobile", "refresh").
+ */
+
+#define SIGN_US "\x1f"
+
+static int sign_put_i64(sbuf_t* sb, int64_t v) {
+    char b[24];
+    int k = snprintf(b, sizeof b, "%" PRId64, v);
+    return (k > 0) ? sbuf_append(sb, b, (size_t)k) : -1;
+}
+
+static int sign_put_str(sbuf_t* sb, const char* s) {
+    size_t n = s ? strlen(s) : 0;
+    char hdr[24];
+    int k = snprintf(hdr, sizeof hdr, "%zu:", n);
+    if (k < 0 || sbuf_append(sb, hdr, (size_t)k)) return -1;
+    if (n && sbuf_append(sb, s, n)) return -1;
+    return 0;
+}
+
+static char* sign_build(const jwt_core_t* core, char kind, int64_t id,
+                        int64_t usu_id, int64_t session_type, int64_t exp,
+                        const char* usu_correo, const char* usu_nombre,
+                        const char* ip, const char* usu_salt,
+                        const char* rand_hex, const char* tail) {
     sbuf_t sb = {0};
-    if (sbuf_append_str(&sb, core->secret) ||
-        sbuf_append_str(&sb, A ? A : "") ||
-        (B && sbuf_append_str(&sb, B))) {
-        free(sb.data); return NULL;
-    }
+    int ok = sbuf_append_str(&sb, core->secret) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sbuf_append(&sb, &kind, 1) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_i64(&sb, id) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_i64(&sb, usu_id) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_i64(&sb, session_type) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_i64(&sb, exp) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, usu_correo) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, usu_nombre) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, ip) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, usu_salt) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, rand_hex) == 0 &&
+             sbuf_append_str(&sb, SIGN_US) == 0 &&
+             sign_put_str(&sb, tail) == 0;
+    if (!ok) { free(sb.data); return NULL; }
     char* hex = jwt_core_hash_hex(sb.data);
     free(sb.data);
     return hex;
@@ -510,7 +564,10 @@ char* jwt_core_write_access(jwt_core_t* core, const jwt_user_t* user,
     snprintf(exp,  sizeof exp,  "%" PRId64, exp_ms ? exp_ms : now);
     snprintf(st,   sizeof st,   "%" PRId64, session_type);
 
-    char* sign = payload_sign(core, id, sign_tail);
+    char* sign = sign_build(core, 'a', user->usu_id, user->usu_id,
+                            session_type, exp_ms ? exp_ms : now,
+                            user->usu_correo, user->usu_nombre, user->ip,
+                            user->usu_salt, NULL, sign_tail);
     if (!sign) return NULL;
 
     sbuf_t sb = {0};
@@ -545,7 +602,10 @@ char* jwt_core_write_refresh(jwt_core_t* core, const jwt_user_t* user,
     snprintf(exp, sizeof exp, "%" PRId64, exp_ms);
     snprintf(st,  sizeof st,  "%" PRId64, session_type);
 
-    char* sign = payload_sign(core, id, sign_tail);
+    char* sign = sign_build(core, 'r', user->usu_id, user->usu_id,
+                            session_type, exp_ms,
+                            user->usu_correo, user->usu_nombre, user->ip,
+                            user->usu_salt, NULL, sign_tail);
     if (!sign) return NULL;
 
     sbuf_t sb = {0};
@@ -582,16 +642,9 @@ char* jwt_core_write_csrf(jwt_core_t* core, int64_t exp_ms,
     char exp_str[24];
     snprintf(exp_str, sizeof exp_str, "%" PRId64, exp);
 
-    /* sign = hash(secret + rand + exp + sign_suffix) */
-    sbuf_t sb = {0};
-    if (sbuf_append_str(&sb, core->secret) ||
-        sbuf_append_str(&sb, rand_hex) ||
-        sbuf_append_str(&sb, exp_str) ||
-        (sign_suffix && sbuf_append_str(&sb, sign_suffix))) {
-        free(sb.data); return NULL;
-    }
-    char* sign = jwt_core_hash_hex(sb.data);
-    free(sb.data);
+    /* sign canónico: cubre rand + exp + sufijo (kind 'c'). */
+    char* sign = sign_build(core, 'c', 0, 0, 0, exp, NULL, NULL, NULL, NULL,
+                            rand_hex, sign_suffix);
     if (!sign) return NULL;
 
     sbuf_t js = {0};
@@ -686,22 +739,17 @@ bool jwt_core_verify_sign(jwt_core_t* core, const jwt_core_payload_t* p,
     if (!core || !p || !p->sign) return false;
     char* expected = NULL;
     if (p->kind == JWT_CORE_KIND_CSRF) {
-        /* sign = hash(secret + rand + exp + sign_tail) */
-        char exp_str[24];
-        snprintf(exp_str, sizeof exp_str, "%" PRId64, p->exp);
-        sbuf_t sb = {0};
-        if (sbuf_append_str(&sb, core->secret) ||
-            sbuf_append_str(&sb, p->rand) ||
-            sbuf_append_str(&sb, exp_str) ||
-            (sign_tail && sbuf_append_str(&sb, sign_tail))) {
-            free(sb.data); return false;
-        }
-        expected = jwt_core_hash_hex(sb.data);
-        free(sb.data);
+        /* Mismo formato canónico que el writer (kind 'c': rand + exp + tail). */
+        expected = sign_build(core, 'c', 0, 0, 0, p->exp, NULL, NULL, NULL,
+                              NULL, p->rand, sign_tail);
     } else {
-        char id[24];
-        snprintf(id, sizeof id, "%" PRId64, p->id);
-        expected = payload_sign(core, id, sign_tail);
+        /* Access/refresh: cubre id, usu_id, session_type, exp, correo,
+         * nombre, ip, salt y la cola del canal. */
+        char kind = (p->kind == JWT_CORE_KIND_REFRESH) ? 'r' : 'a';
+        expected = sign_build(core, kind, p->id, p->user.usu_id,
+                              p->session_type, p->exp,
+                              p->user.usu_correo, p->user.usu_nombre,
+                              p->user.ip, p->user.usu_salt, NULL, sign_tail);
     }
     if (!expected) return false;
     bool ok = jwt_safe_compare(expected, p->sign);
