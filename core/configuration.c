@@ -99,6 +99,10 @@ const char* cfg_getenv(const char* key) {
             return env_get("NODE_ENV");
         case 0xc5a91690u: /* SERVER_PORT */
             return env_get("SERVER_PORT");
+        case 0xa33522bbu: /* WEB_SESSION_TYPE */
+            return env_get("WEB_SESSION_TYPE");
+        case 0xbca4f0e9u: /* MOBILE_SESSION_TYPE */
+            return env_get("MOBILE_SESSION_TYPE");
         default:
             return env_get(key);
     }
@@ -135,6 +139,15 @@ app_config_t* configuration_new(void) {
         cfg->refresh_token_expiration_days = 7;
     const char* env_name = cfg_getenv("NODE_ENV");
     cfg->is_production = !env_name || strcmp(env_name, "production") == 0;
+
+    /* Session types — configurables vía .env (WEB_SESSION_TYPE /
+     * MOBILE_SESSION_TYPE) con defaults 1/2 (compat con la referencia). */
+    cfg->web_session_type = 1;
+    const char* wst = cfg_getenv("WEB_SESSION_TYPE");
+    if (wst && *wst) cfg->web_session_type = (uint32_t)strtoul(wst, NULL, 10);
+    cfg->mobile_session_type = 2;
+    const char* mst = cfg_getenv("MOBILE_SESSION_TYPE");
+    if (mst && *mst) cfg->mobile_session_type = (uint32_t)strtoul(mst, NULL, 10);
 
     const char* e = cfg_getenv("DB_ENCRYPT");
     cfg->db_encrypt = !(e && !strcmp(e, "false"));

@@ -36,8 +36,7 @@ static authorization_t* g_auth = NULL;
 /* respuestas de error (reject / res.status(401).json)                 */
 /* ------------------------------------------------------------------ */
 
-static void send_json_error(cws_response_t* res, int status,
-                            const char* msg) {
+static void send_json_error( cws_response_t* res, int status, const char* msg ) {
     char body[256];
     int n = snprintf(body, sizeof(body),
                      "{\"success\":false,\"error\":1,\"msg\":");
@@ -63,7 +62,7 @@ static void send_json_error(cws_response_t* res, int status,
 
 /* Copia NUL-terminada del header `name` (recorre req->headers con
  * longitudes; cws_request_header no entrega longitud). malloc o NULL. */
-static char* header_dup(const cws_request_t* req, const char* name) {
+static char* header_dup( const cws_request_t* req, const char* name ) {
     if (!req || !name) return NULL;
     size_t nlen = strlen(name);
     for (size_t i = 0; i < req->headers_count; i++) {
@@ -262,8 +261,11 @@ bool authorization_request_authorized(const cws_request_t* req) {
 static int authorize_request(authorization_t* auth, cws_request_t* req,
                              cws_response_t* res,
                              jwt_gost_payload_t* payload) {
-    /* userDAO(auth.user.usu_correo) — el correo viaja en claro. */
-    sql_result_t* dao = authorization_user_dao(auth, payload->user.usu_correo);
+    /* userDAO(hash(usu_correo)) — la BD guarda el correo hasheado (igual
+     * que signin). El token lleva el correo en claro. */
+    char* hashed = jwt_core_hash_hex(payload->user.usu_correo);
+    sql_result_t* dao = hashed ? authorization_user_dao(auth, hashed) : NULL;
+    free(hashed);
     if (!dao || dao->nrows == 0) {
         send_json_error(res, 500, "Error al iniciar sesión");
         sql_result_free(dao);
@@ -337,6 +339,18 @@ void cws_mw_authorization_verify(cws_request_t* req, cws_response_t* res,
         return;
     }
 
+    /* Verificación de IP (canal web): el token fue emitido para una IP y solo
+     * se acepta desde esa misma IP. Mobile lo omite. */
+    char* ip = client_ip(res);
+    int ip_ok = ip && payload->user.ip &&
+                strcmp(ip, payload->user.ip) == 0;
+    free(ip);
+    if (!ip_ok) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
     if (!authorize_request(g_auth, req, res, payload)) {
         jwt_payload_free(payload);
         free_ctx(req);
@@ -375,19 +389,29 @@ void cws_mw_authorization_refresh(cws_request_t* req, cws_response_t* res,
         return;
     }
 
+    /* IP del canal web: el refresh también va ligado a la IP original. */
+    char* ip = client_ip(res);
+    int ip_ok = ip && payload->user.ip &&
+                strcmp(ip, payload->user.ip) == 0;
+    free(ip);
+    if (!ip_ok) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
     if (!authorize_request(g_auth, req, res, payload)) {
         jwt_payload_free(payload);
         free_ctx(req);
         return;
     }
 
-    /* Re-emisión de access/csrf/refresh_csrf (cookies). */
-    char* ip = client_ip(res);
+    /* Re-emisión de access/csrf/refresh_csrf (cookies). El access se firma
+     * con user->ip (el mismo del token original, ya validado). */
     jwt_user_t user = payload->user;
     char* access = jwt_write_gost_token(g_auth->jwt, &user);
     char* csrf = jwt_write_csrf_token(g_auth->jwt);
     char* refresh_csrf_new = jwt_write_refresh_csrf_token(g_auth->jwt);
-    free(ip);
 
     if (access) {
         char cookie[1600];
@@ -478,7 +502,7 @@ int authorization_signin(cws_request_t* req, cws_response_t* res,
     for (char* p = email; *p; p++) *p = (char)tolower((unsigned char)*p);
 
     /* hashed_email = hash(email): el DAO busca por el hash. */
-    char* hashed = jwt_hash_hex(email);
+    char* hashed = jwt_core_hash_hex(email);
     if (!hashed) {
         free(body);
         free(email);

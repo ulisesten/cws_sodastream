@@ -20,6 +20,7 @@
 
 #include "authorization.h"
 #include "jwt.h"
+#include "configuration.h"
 
 /* ------------------------------------------------------------------ */
 /* helpers de respuesta (reject + json de éxito, y dto)                 */
@@ -208,7 +209,7 @@ static CWS_HANDLER(user_new_handler) {
     /* normalize_email: trim + lowercase. */
     for (char* p = email; *p; p++) *p = (char)tolower((unsigned char)*p);
 
-    hashed_email = jwt_hash_hex(email);
+    hashed_email = jwt_core_hash_hex(email);
 
     /* hashed_contrasena = hash(contrasena.trim()). */
     char* pw = password;
@@ -218,7 +219,7 @@ static CWS_HANDLER(user_new_handler) {
         pw[--pw_len] = '\0';
     char save = pw[pw_len];
     pw[pw_len] = '\0';
-    hashed_pass = jwt_hash_hex(pw);
+    hashed_pass = jwt_core_hash_hex(pw);
     pw[pw_len] = save;
     if (!hashed_email || !hashed_pass) {
         reject_json(res, 500, "Error al registrar usuario");
@@ -260,12 +261,41 @@ done:
 /* router                                                              */
 /* ------------------------------------------------------------------ */
 
+/* GET /protected/me — ruta protegida por el middleware web (cookie
+ * access_token + header x-csrf-token + validación de IP). Devuelve el
+ * usuario autorizado. */
+static CWS_HANDLER(user_me_handler) {
+    const jwt_user_t* u = authorization_request_user(req);
+    if (!u) { cws_response_send_error(res, 401); return; }
+    char body[512];
+    int n = snprintf(body, sizeof(body),
+                     "{\"usu_id\":%lld,\"usu_nombre\":\"%s\","
+                     "\"usu_correo\":\"%s\"}",
+                     (long long)u->usu_id,
+                     u->usu_nombre ? u->usu_nombre : "",
+                     u->usu_correo ? u->usu_correo : "");
+    if (n < 0 || (size_t)n >= sizeof(body)) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    cws_response_body(res, body, (size_t)n, CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
 cws_router_t* users_routes(void) {
     cws_router_t* r = cws_router_new();
     if (!r) return NULL;
 
     cws_router_add(r, CWS_M_POST, "/signin", user_signin_handler);
     cws_router_add(r, CWS_M_POST, "/", user_new_handler);
+
+    /* Sub-router protegido (cookies + CSRF + IP): GET /me. */
+    cws_router_t* prot = cws_router_new();
+    if (prot) {
+        cws_router_use(prot, cws_mw_authorization_verify);
+        cws_router_add(prot, CWS_M_GET, "/", user_me_handler);
+        cws_router_mount(r, "/me", prot);
+    }
 
     return r;
 }

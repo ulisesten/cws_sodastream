@@ -14,7 +14,9 @@
 #include "api/v1/routes/videos/domain/videos_domain.h"
 #include "api/v1/routes/users/users_routes.h"
 #include "api/v1/routes/users/domain/users_domain.h"
+#include "api/v1/routes/mobile/mobile_routes.h"
 #include "authorization.h"
+#include "authorization_mobile.h"
 #include "configuration.h"
 
 static cws_app_t* g_app = NULL;
@@ -98,6 +100,9 @@ int main(void) {
     authorization_init();
     users_domain_init();
 
+    /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
+    authorization_mobile_init();
+
     /* Global middleware: logger + CORS on every request */
     cws_app_use(g_app, cws_mw_logger);
     cws_app_use(g_app, cws_mw_cors);
@@ -119,6 +124,13 @@ int main(void) {
      *   POST /api/v1/users/       -> alta de usuario
      */
     cws_app_mount(g_app, "/api/v1/users", users_routes());
+
+    /* Router de autenticación móvil (sin cookies), namespace propio:
+     *   POST /api/v1/auth/mobile/signin        -> tokens access/refresh
+     *   POST /api/v1/auth/mobile/refresh_token -> nuevo access (X-Refresh-Token)
+     *   GET  /api/v1/auth/mobile/me            -> protegido (Bearer)
+     */
+    cws_app_mount(g_app, "/api/v1/auth/mobile", mobile_routes());
 
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */

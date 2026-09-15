@@ -1,6 +1,8 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,6 +35,10 @@ typedef struct app_config {
     int   access_token_expiration_minutes; /* ACCESS_TOKEN_EXPIRATION_MINUTES, default 15 */
     int   refresh_token_expiration_days;   /* REFRESH_TOKEN_EXPIRATION_DAYS, default 7 */
     int   is_production;     /* NODE_ENV == "production" (cookies secure) */
+
+    /* Identificadores de canal (jwt_web + jwt_mobile). Configurables. */
+    uint32_t web_session_type;    /* WEB_SESSION_TYPE, default 1 */
+    uint32_t mobile_session_type; /* MOBILE_SESSION_TYPE, default 2 */
 } app_config_t;
 
 /**
