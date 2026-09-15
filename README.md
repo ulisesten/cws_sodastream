@@ -1,65 +1,113 @@
-# cws_example_app
+# cws_sodastream
 
-Reference consumer of the `cws` HTTP library via a git submodule.
+Servidor HTTP en C para SodaStream: usa el framework [`cws`](#submódulos) como
+submódulo, acceso a SQL Server por ODBC, autenticación web/móvil con tokens
+GOST, servidor estático HLS y configuración central por `.env`.
 
 ## Layout
 
 ```
 .
 ├── CMakeLists.txt
-├── main.c
-└── third_party/cws/      # git submodule (this repo's companion)
+├── run.sh                     # instala deps, compila y ejecuta
+├── core/                      # lógica central (independiente de las rutas)
+│   ├── configuration.{h,c}    #   env central (cfg_getenv por hash)
+│   ├── sql_eject.{h,c}        #   ejecutor de stored procedures (ODBC)
+│   ├── jwt_core.{h,c}         #   primitivas de token compartidas web/móvil
+│   ├── jwt.{h,c}              #   tokens web (cookies + CSRF)
+│   ├── jwt_mobile.{h,c}       #   tokens móvil (Bearer, sin IP)
+│   ├── authorization.{h,c}    #   middlewares web + signin
+│   ├── authorization_mobile.{h,c} # middlewares/signin móvil
+│   ├── password.{h,c}         #   PBKDF2-HMAC-Streebog + salt + pepper
+│   └── hash_table.{h,c}       #   hash FNV-1a para cfg_getenv
+├── src/                       # aplicación
+│   ├── main.c
+│   └── api/v1/routes/         #   videos, users, mobile
+├── sql/                       # scripts SQL (SPs, tablas, migraciones)
+├── docs/                      # documentación (p. ej. spec del KDF)
+├── reference/                 # fuentes JS de referencia (origen del port)
+└── third_party/
+    ├── cws/                   # submódulo: framework HTTP
+    └── c_gost_encryption/     # submódulo: criptografía GOST
 ```
+
+## Submódulos
+
+Este repo consume dos librerías como **git submodules**; no se editan aquí, se
+versionan por commit y se actualizan con `git submodule`.
+
+| Ruta | Repositorio | Propósito | Commit fijado |
+|------|-------------|-----------|---------------|
+| `third_party/cws` | [ulisesten/c_web_server](https://github.com/ulisesten/c_web_server) | Framework HTTP: router, middlewares, servidor estático, env, métricas | `1adddb4` (`devel`) |
+| `third_party/c_gost_encryption` | [ulisesten/c_gost_encryption](https://github.com/ulisesten/c_gost_encryption) | Criptografía GOST: Streebog, 28147-89, 34.10-2012, `gost/kdf` (HMAC + PBKDF2) | `aedd242` (`main`) |
+
+### Clonar
+
+```bash
+git clone --recurse-submodules <url-de-este-repo> cws_sodastream
+# o, si ya está clonado sin submódulos:
+git submodule update --init --recursive
+```
+
+### Actualizar un submódulo
+
+```bash
+# bajar el último commit de su rama y fijarlo
+git submodule update --remote third_party/cws
+git -C third_party/cws log --oneline -3        # revisar qué entra
+git add third_party/cws
+git commit -m "bump(cws): <commit>"
+```
+
+### Notas
+
+- **Rama por submódulo**: `cws` sigue `devel`; `c_gost_encryption` sigue `main`.
+  Al hacer `--remote`, cada `.gitmodules` define su rama.
+- **SSH**: si el push del repo falla por HTTPS, configurar la clave y forzarla
+  por repo: `git config core.sshCommand 'ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes'`.
+- **API consumida**:
+  - `cws`: `cws_app_*`, `cws_router_*`, `cws_mw_*`, `cws_app_static_mount`,
+    `cws_response_*`, `cws_env_*` (ver `third_party/cws/README.md`).
+  - `c_gost_encryption`: `gost_hash`/`gost_hash_text`, `gost_cipher_cfb_*`,
+    `gost_hmac`, `gost_pbkdf2` (ver `third_party/c_gost_encryption/README.md`).
+- **CMake**: `CMakeLists.txt` hace `add_subdirectory(third_party/cws)` y
+  `add_subdirectory(third_party/c_gost_encryption)` y enlaza `cws`, `gost::gost`
+  y `ODBC::ODBC`.
 
 ## Build & run
 
 ```bash
-# 1. get sources + submodules
-git clone --recurse-submodules <this-repo-url> cws_example_app
-cd cws_example_app
+./run.sh                 # instala dependencias, compila y ejecuta
+./run.sh --skip-deps     # compila y ejecuta (sin tocar el sistema)
+./run.sh --build-only    # solo compila
+```
 
-# 2. configure + build
+Manual:
+
+```bash
 cmake -S . -B build
 cmake --build build -j
-
-# 3. run
-./build/cws_example_app
+./build/cws_sodastream
 ```
 
-The server listens on `:8181`. Try:
+El puerto sale de `.env` (`PORT`/`SERVER_PORT`, default `8080`). Pruebas
+rápidas:
 
 ```bash
-curl http://127.0.0.1:8181/
-curl http://127.0.0.1:8181/healthz
-curl http://127.0.0.1:8181/users/42
-curl http://127.0.0.1:8181/metrics
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/metrics
+curl http://127.0.0.1:8080/api/v1/videos/popular
+POST /api/v1/users/signin            # web: cookies + CSRF
+POST /api/v1/auth/mobile/signin      # móvil: tokens en el body
 ```
 
-## Updating the library
-
-```bash
-git submodule update --remote third_party/cws
-git add third_party/cws
-git commit -m "bump cws"
-```
-
-## How it works
-
-`CMakeLists.txt` calls `add_subdirectory(third_party/cws)`, which registers a
-`cws` static library target that exports include paths and compile flags
-(`-march=x86-64-v3`, `-mtune=native`). The host target just links it:
-
-```cmake
-add_subdirectory(third_party/cws)
-target_link_libraries(cws_example_app PRIVATE cws)
-```
-
-For an installed `cws` (instead of a submodule), swap the above lines for:
+Para consumir `cws` ya instalada en el sistema (en lugar del submódulo):
 
 ```cmake
 find_package(cws REQUIRED CONFIG)
-target_link_libraries(cws_example_app PRIVATE cws::cws)
+target_link_libraries(cws_sodastream PRIVATE cws::cws)
 ```
+
 
 ---
 
