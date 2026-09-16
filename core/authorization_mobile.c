@@ -162,14 +162,15 @@ void authorization_mobile_free(authorization_mobile_t* auth) {
     free(auth);
 }
 
-void authorization_mobile_init(void) {
+int authorization_mobile_init(void) {
     app_config_t* cfg = configuration_new();
-    if (!cfg) return;
+    if (!cfg) return 0;
     authorization_mobile_t* auth = authorization_mobile_new(cfg);
     configuration_free(cfg);
-    if (!auth) return;
+    if (!auth) return 0;
     authorization_mobile_free(g_auth);
     g_auth = auth;
+    return 1;
 }
 
 void authorization_mobile_shutdown(void) {
@@ -386,7 +387,10 @@ static char* body_dup(const cws_request_t* req) {
 }
 
 int authorization_mobile_signin(cws_request_t* req, cws_response_t* res) {
-    if (!g_auth || !req) return CWS_ERR_INVALID;
+    if (!g_auth || !req) {
+        send_json_error(res, 500, "Servicio no inicializado");
+        return CWS_ERR_INVALID;
+    }
 
     char* body = body_dup(req);
     char* email = NULL;

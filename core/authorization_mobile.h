@@ -40,8 +40,9 @@ typedef struct authorization_mobile authorization_mobile_t;
 authorization_mobile_t* authorization_mobile_new(const app_config_t* cfg);
 void authorization_mobile_free(authorization_mobile_t* auth);
 
-/** Instancia global para el middleware (patrón videos_domain_init). */
-void authorization_mobile_init(void);
+/** Instancia global para el middleware (patrón videos_domain_init).
+ *  \return 1 si quedó inicializado; 0 si falta configuración. */
+int  authorization_mobile_init(void);
 void authorization_mobile_shutdown(void);
 
 /* ------------------------------------------------------------------ */

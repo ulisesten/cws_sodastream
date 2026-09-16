@@ -58,8 +58,10 @@ void authorization_free(authorization_t* auth);
  * \brief Instancia global para los middlewares (patrón videos_domain_init):
  * construye el servicio desde el env del app. Llamar una vez en main() tras
  * cargar el .env. authorization_shutdown() la libera.
+ * \return 1 si quedó inicializado; 0 si falta configuración (p. ej.
+ *         SECRET_KEY/X_VECTOR) — el llamador debe abortar.
  */
-void authorization_init(void);
+int  authorization_init(void);
 void authorization_shutdown(void);
 
 /* ------------------------------------------------------------------ */

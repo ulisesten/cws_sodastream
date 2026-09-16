@@ -131,6 +131,11 @@ static CWS_HANDLER(user_signin_handler) {
     }
 
     int rc = authorization_signin(req, res, &auth_user);
+    if (rc == CWS_ERR_INVALID) {
+        /* servicio no inicializado / petición inválida */
+        reject_json(res, 500, "Servicio no inicializado");
+        goto done;
+    }
     if (rc != CWS_OK) {
         cws_response_status(res, 401);
         send_json(res, "{\"success\":false,\"error\":1,"

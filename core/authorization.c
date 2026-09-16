@@ -41,7 +41,7 @@ static authorization_t* g_auth = NULL;
 static void send_json_error( cws_response_t* res, int status, const char* msg ) {
     char body[256];
     int n = snprintf(body, sizeof(body),
-                     "{\"success\":false,\"error\":1,\"msg\":");
+                     "{\"success\":false,\"error\":1,\"msg\":\"");
     if (n < 0) n = 0;
     size_t len = (size_t)n;
     /* msg no controlado: escapado mínimo (comillas y barras). */
@@ -166,14 +166,15 @@ void authorization_free(authorization_t* auth) {
     free(auth);
 }
 
-void authorization_init(void) {
+int authorization_init(void) {
     app_config_t* cfg = configuration_new();
-    if (!cfg) return;
+    if (!cfg) return 0;
     authorization_t* auth = authorization_new(cfg);
     configuration_free(cfg);
-    if (!auth) return;
+    if (!auth) return 0;
     authorization_free(g_auth);
     g_auth = auth;
+    return 1;
 }
 
 void authorization_shutdown(void) {

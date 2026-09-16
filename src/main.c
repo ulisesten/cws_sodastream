@@ -97,11 +97,17 @@ int main(void) {
 
     /* Servicios de sesión: authorization (tokens GOST + signin) y
      * users_domain (DAO de procUsersProc/Cons). */
-    authorization_init();
+    if (!authorization_init() || !authorization_mobile_init()) {
+        fprintf(stderr,
+                "No se pudo inicializar auth: revisa SECRET_KEY y X_VECTOR "
+                "(8 palabras hex separadas por coma) en .env\n");
+        cws_app_free(g_app);
+        return 1;
+    }
     users_domain_init();
 
     /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
-    authorization_mobile_init();
+
 
     /* Global middleware: logger + CORS on every request */
     cws_app_use(g_app, cws_mw_logger);
