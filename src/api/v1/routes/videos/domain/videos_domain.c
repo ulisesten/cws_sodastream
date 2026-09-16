@@ -16,8 +16,9 @@
 
 #define VIDEOS_DB "soda_stream"
 
-/// Sp Consultas
-#define CAT_VIDEOS_MAS_VISTOS_CONS 7;
+/* Códigos de tipoConsulta de procCatVideosCons (SMALLINT, ver sql/). */
+#define CAT_VIDEO_BY_ID_CONS        2
+#define CAT_VIDEOS_MAS_VISTOS_CONS  7
 
 static sql_eject_t* g_sql = NULL;
 
@@ -49,7 +50,7 @@ void get_popular_videos(cws_request_t* req, cws_response_t* res) {
 
     sql_param_t params[1];
     params[0].name = "tipoConsulta";
-    params[0].type = SQL_COL_INT;
+    params[0].type = SQL_PT_INT;
     params[0].val.as_int = CAT_VIDEOS_MAS_VISTOS_CONS;
 
     sql_result_t out;
@@ -92,8 +93,8 @@ void get_video_by_id(cws_request_t* req, cws_response_t* res) {
 
     sql_param_t params[2];
     params[0].name = "tipoConsulta";
-    params[0].type = SQL_PT_STRING;
-    params[0].val.as_string = "CAT_VIDEO_BY_ID_CONS";
+    params[0].type = SQL_PT_INT;
+    params[0].val.as_int = CAT_VIDEO_BY_ID_CONS;
     params[1].name = "vid_id_public";
     params[1].type = SQL_PT_STRING;
     params[1].val.as_string = id;

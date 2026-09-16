@@ -99,6 +99,15 @@ void cws_mw_authorization_verify(cws_request_t* req, cws_response_t* res,
 void cws_mw_authorization_refresh(cws_request_t* req, cws_response_t* res,
                                   cws_next_fn next);
 
+/**
+ * \brief Endpoint de refresh (POST /api/v1/users/refresh_token).
+ *
+ * Igual validación que cws_mw_authorization_refresh (cookie refresh_token +
+ * header x-csrf-token + IP) y re-emisión de cookies, pero responde
+ * {"success":true,...} en vez de continuar la cadena.
+ */
+void authorization_refresh(cws_request_t* req, cws_response_t* res);
+
 /* ------------------------------------------------------------------ */
 /* signin                                                              */
 /* ------------------------------------------------------------------ */

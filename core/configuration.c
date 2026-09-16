@@ -107,6 +107,10 @@ const char* cfg_getenv(const char* key) {
             return env_get("PASSWORD_KDF_ITERATIONS");
         case 0x8e3a3a39u: /* PASSWORD_PEPPER */
             return env_get("PASSWORD_PEPPER");
+        case 0xec4e5010u: /* CORS_ORIGINS */
+            return env_get("CORS_ORIGINS");
+        case 0x096d198cu: /* COOKIE_DOMAIN */
+            return env_get("COOKIE_DOMAIN");
         default:
             return env_get(key);
     }

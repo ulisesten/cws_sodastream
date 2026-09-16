@@ -34,6 +34,11 @@ struct authorization {
 
 static authorization_t* g_auth = NULL;
 
+/* Emite un Set-Cookie (definido abajo; se usa en signin y refresh). */
+static void set_cookie(cws_response_t* res, const char* name,
+                       const char* value, const char* path,
+                       int max_age_sec, int http_only, int secure);
+
 /* ------------------------------------------------------------------ */
 /* respuestas de error (reject / res.status(401).json)                 */
 /* ------------------------------------------------------------------ */
@@ -416,32 +421,15 @@ void cws_mw_authorization_refresh(cws_request_t* req, cws_response_t* res,
     char* csrf = jwt_write_csrf_token(g_auth->jwt);
     char* refresh_csrf_new = jwt_write_refresh_csrf_token(g_auth->jwt);
 
-    if (access) {
-        char cookie[1600];
-        int n = snprintf(cookie, sizeof(cookie),
-                         "access_token=%s; HttpOnly; SameSite=Lax; "
-                         "Path=/api/v1; Max-Age=%d",
-                         access, g_auth->access_minutes * 60);
-        if (n > 0 && (size_t)n < sizeof(cookie))
-            cws_response_header(res, "Set-Cookie", "%s", cookie);
-    }
-    if (csrf) {
-        char cookie[1600];
-        int n = snprintf(cookie, sizeof(cookie),
-                         "csrf_token=%s; SameSite=Lax; Path=/; Max-Age=%d",
-                         csrf, g_auth->access_minutes * 60);
-        if (n > 0 && (size_t)n < sizeof(cookie))
-            cws_response_header(res, "Set-Cookie", "%s", cookie);
-    }
-    if (refresh_csrf_new) {
-        char cookie[1600];
-        int n = snprintf(cookie, sizeof(cookie),
-                         "refresh_csrf_token=%s; SameSite=Lax; Path=/; "
-                         "Max-Age=%d",
-                         refresh_csrf_new, g_auth->refresh_days * 86400);
-        if (n > 0 && (size_t)n < sizeof(cookie))
-            cws_response_header(res, "Set-Cookie", "%s", cookie);
-    }
+    if (access)
+        set_cookie(res, "access_token", access, "/api/v1",
+                   g_auth->access_minutes * 60, 1, g_auth->is_prod);
+    if (csrf)
+        set_cookie(res, "csrf_token", csrf, "/",
+                   g_auth->access_minutes * 60, 0, g_auth->is_prod);
+    if (refresh_csrf_new)
+        set_cookie(res, "refresh_csrf_token", refresh_csrf_new, "/",
+                   g_auth->refresh_days * 86400, 0, g_auth->is_prod);
 
     free(access);
     free(csrf);
@@ -449,6 +437,76 @@ void cws_mw_authorization_refresh(cws_request_t* req, cws_response_t* res,
 
     /* Pipeline síncrono: al retornar next() la petición terminó. */
     next(req, res);
+    free_ctx(req);
+}
+
+/* Endpoint POST /api/v1/users/refresh_token: misma validación que el
+ * middleware, re-emite cookies y responde JSON (sin continuar cadena). */
+void authorization_refresh(cws_request_t* req, cws_response_t* res) {
+    if (!g_auth) {
+        send_json_error(res, 500, "Servicio no inicializado");
+        return;
+    }
+
+    char* token = cookie_value(req, "refresh_token");
+    char* refresh_csrf = header_dup(req, "x-csrf-token");
+    if (!token || !refresh_csrf) {
+        send_json_error(res, 401, "No credentials are present.");
+        free(token);
+        free(refresh_csrf);
+        return;
+    }
+
+    jwt_gost_payload_t* payload = jwt_verify_refresh_token(g_auth->jwt, token);
+    bool csrf_valid = jwt_verify_csrf_token(g_auth->jwt, refresh_csrf);
+    free(token);
+    free(refresh_csrf);
+
+    if (!payload || !csrf_valid) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
+    char* ip = client_ip(res);
+    int ip_ok = ip && payload->user.ip && strcmp(ip, payload->user.ip) == 0;
+    free(ip);
+    if (!ip_ok) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
+    if (!authorize_request(g_auth, req, res, payload)) {
+        jwt_payload_free(payload);
+        free_ctx(req);
+        return;
+    }
+
+    jwt_user_t user = payload->user;
+    char* access = jwt_write_gost_token(g_auth->jwt, &user);
+    char* csrf = jwt_write_csrf_token(g_auth->jwt);
+    char* refresh_csrf_new = jwt_write_refresh_csrf_token(g_auth->jwt);
+
+    if (access)
+        set_cookie(res, "access_token", access, "/api/v1",
+                   g_auth->access_minutes * 60, 1, g_auth->is_prod);
+    if (csrf)
+        set_cookie(res, "csrf_token", csrf, "/",
+                   g_auth->access_minutes * 60, 0, g_auth->is_prod);
+    if (refresh_csrf_new)
+        set_cookie(res, "refresh_csrf_token", refresh_csrf_new, "/",
+                   g_auth->refresh_days * 86400, 0, g_auth->is_prod);
+
+    free(access);
+    free(csrf);
+    free(refresh_csrf_new);
+
+    const char* body = "{\"success\":true,\"error\":0,"
+                       "\"msg\":\"Sesion renovada\"}";
+    cws_response_status(res, 200);
+    cws_response_body(res, body, strlen(body), CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
     free_ctx(req);
 }
 
@@ -472,12 +530,20 @@ static char* body_dup(const cws_request_t* req) {
 static void set_cookie(cws_response_t* res, const char* name,
                        const char* value, const char* path,
                        int max_age_sec, int http_only, int secure) {
+    /* Dominio opcional (para compartir cookies entre subdominios, p. ej.
+     * el front en sodastream.fun y la API en cws.sodastream.fun). */
+    char dom[160];
+    dom[0] = '\0';
+    const char* d = cfg_getenv("COOKIE_DOMAIN");
+    if (d && *d) snprintf(dom, sizeof(dom), "; Domain=%s", d);
+
     char cookie[1600];
-    int n = snprintf(cookie, sizeof(cookie), "%s=%s;%s%s SameSite=Lax; Path=%s; Max-Age=%d",
+    int n = snprintf(cookie, sizeof(cookie),
+                     "%s=%s%s%s%s; SameSite=Lax; Path=%s; Max-Age=%d",
                      name, value ? value : "",
-                     http_only ? " HttpOnly;" : "",
-                     secure ? " Secure;" : "",
-                     path, max_age_sec);
+                     http_only ? "; HttpOnly" : "",
+                     secure ? "; Secure" : "",
+                     dom, path, max_age_sec);
     if (n > 0 && (size_t)n < sizeof(cookie))
         cws_response_header(res, "Set-Cookie", "%s", cookie);
 }

@@ -113,6 +113,9 @@ int main(void) {
     cws_app_use(g_app, cws_mw_logger);
     cws_app_use(g_app, cws_mw_cors);
 
+    /* CORS con credenciales (cookies) para los orígenes configurados. */
+    cws_mw_cors_configure(cfg_getenv("CORS_ORIGINS"), 1);
+
     /* App-level routes */
     CWS_GET(g_app, "/",          root_handler);
     CWS_GET(g_app, "/healthz",   health_handler);
