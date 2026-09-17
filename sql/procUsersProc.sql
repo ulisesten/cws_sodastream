@@ -27,7 +27,8 @@ ALTER PROCEDURE [dbo].[procUsersProc]
 AS
 BEGIN TRANSACTION
     DECLARE
-        @PROC_USU_REGISTRAR SMALLINT = 1
+        @PROC_USU_REGISTRAR SMALLINT = 1,
+        @PROC_USU_LOGOUT    SMALLINT = 2
 
     IF @tipoRegistro = @PROC_USU_REGISTRAR BEGIN
         BEGIN TRY
@@ -63,6 +64,31 @@ BEGIN TRANSACTION
         SELECT 
             success = @success, 
             msg= @msg, 
+            error=  @error
+    END
+
+    -- Logout global: rota el usu_salt del usuario. Todos sus tokens
+    -- (access/refresh) dejan de validar el chequeo de salt.
+    IF @tipoRegistro = @PROC_USU_LOGOUT BEGIN
+        BEGIN TRY
+                UPDATE cat_usuarios
+                   SET usu_salt    = @usu_salt,
+                       fecha_mod   = @fecha_mod,
+                       usuario_mod = @usuario_mod
+                 WHERE usu_correo  = @usu_correo
+
+                SELECT @msg='Sesion cerrada', @error = 0, @success = 'true'
+        END TRY
+        BEGIN CATCH
+            SELECT   @msg = ERROR_MESSAGE(), @error = @@ERROR, @error_sev = ERROR_SEVERITY(),@error_state = ERROR_STATE()
+            RAISERROR(@msg,@error_sev,@error_state);
+            ROLLBACK TRANSACTION
+            RETURN
+        END CATCH
+
+        SELECT
+            success = @success,
+            msg= @msg,
             error=  @error
     END
 

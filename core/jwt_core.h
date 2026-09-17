@@ -80,6 +80,10 @@ bool jwt_safe_compare(const char* a, const char* b);
 /** Streebog-256 hex con convenio JS (UTF-16LE). */
 char* jwt_core_hash_hex(const char* data);
 
+/** \brief Cadena aleatoria estilo nanoid (alfabeto A-Za-z0-9_-) de `len`
+ *         chars (para salt de sesión, jti, etc.). malloc o NULL. */
+char* jwt_core_nanoid(size_t len);
+
 /** Reversible (CFB) del password con trim, en base64. */
 char* jwt_core_generate_password(jwt_core_t* core, const char* password);
 

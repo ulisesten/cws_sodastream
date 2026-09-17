@@ -71,6 +71,12 @@ void cws_mw_authorization_mobile_verify(cws_request_t* req, cws_response_t* res,
  */
 void authorization_mobile_refresh(cws_request_t* req, cws_response_t* res);
 
+/**
+ * \brief logout(req,res): cierra sesión (Bearer). Invalida los tokens del
+ *        usuario rotando su `usu_salt` y responde JSON.
+ */
+void authorization_mobile_logout(cws_request_t* req, cws_response_t* res);
+
 /* ------------------------------------------------------------------ */
 /* signin                                                              */
 /* ------------------------------------------------------------------ */

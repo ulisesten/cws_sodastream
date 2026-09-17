@@ -372,6 +372,73 @@ void authorization_mobile_refresh(cws_request_t* req, cws_response_t* res) {
     free_mobile_ctx(req);
 }
 
+/* Logout global móvil: rota el usu_salt del usuario (invalida todos sus
+ * tokens) y responde JSON. */
+static int mobile_rotate_user_salt(authorization_mobile_t* auth,
+                                   const char* hashed_correo) {
+    char* salt = jwt_core_nanoid(10);
+    if (!salt) return CWS_ERR_NOMEM;
+    sql_param_t params[3];
+    params[0].name = "tipoRegistro";
+    params[0].type = SQL_PT_INT;
+    params[0].val.as_int = 2; /* PROC_USU_LOGOUT */
+    params[1].name = "usu_correo";
+    params[1].type = SQL_PT_STRING;
+    params[1].val.as_string = hashed_correo;
+    params[2].name = "usu_salt";
+    params[2].type = SQL_PT_STRING;
+    params[2].val.as_string = salt;
+    sql_result_t out;
+    int rc = sql_eject_store(auth->sql, "procUsersProc", AUTH_MOBILE_DB,
+                             params, 3, &out);
+    sql_result_free(&out);
+    free(salt);
+    return rc;
+}
+
+void authorization_mobile_logout(cws_request_t* req, cws_response_t* res) {
+    if (!g_auth) {
+        send_json_error(res, 500, "Servicio no inicializado");
+        return;
+    }
+
+    char* token = bearer_token(req);
+    if (!token || !*token) {
+        send_json_error(res, 401, "No credentials are present.");
+        free(token);
+        return;
+    }
+    jwt_mobile_payload_t payload =
+        jwt_mobile_verify_access_token(g_auth->jwt, token);
+    free(token);
+    if (!payload) {
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+    if (!authorize_mobile(g_auth, req, res, payload)) {
+        jwt_mobile_payload_free(payload);
+        free_mobile_ctx(req);
+        return;
+    }
+
+    char* hashed = jwt_core_hash_hex(payload->user.usu_correo);
+    int rc = hashed ? mobile_rotate_user_salt(g_auth, hashed) : CWS_ERR_GENERIC;
+    free(hashed);
+    /* free_mobile_ctx libera el payload (ya está en req->__user). */
+    free_mobile_ctx(req);
+
+    if (rc != CWS_OK) {
+        send_json_error(res, 500, "No se pudo cerrar sesión");
+        return;
+    }
+
+    const char* body = "{\"success\":true,\"error\":0,"
+                       "\"msg\":\"Sesion cerrada\"}";
+    cws_response_status(res, 200);
+    cws_response_body(res, body, strlen(body), CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
 /* ------------------------------------------------------------------ */
 /* signin                                                              */
 /* ------------------------------------------------------------------ */

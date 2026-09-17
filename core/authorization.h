@@ -108,6 +108,15 @@ void cws_mw_authorization_refresh(cws_request_t* req, cws_response_t* res,
  */
 void authorization_refresh(cws_request_t* req, cws_response_t* res);
 
+/**
+ * \brief Logout web (POST /api/v1/users/logout).
+ *
+ * Exige cookie access_token + X-CSRF-Token. Invalida la sesión rotando el
+ * `usu_salt` del usuario (todos sus tokens dejan de validar), limpia las
+ * cookies y responde 200.
+ */
+void authorization_logout(cws_request_t* req, cws_response_t* res);
+
 /* ------------------------------------------------------------------ */
 /* signin                                                              */
 /* ------------------------------------------------------------------ */

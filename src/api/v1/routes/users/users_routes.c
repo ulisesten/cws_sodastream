@@ -285,6 +285,10 @@ static CWS_HANDLER(user_refresh_handler) {
     authorization_refresh(req, res);
 }
 
+static CWS_HANDLER(user_logout_handler) {
+    authorization_logout(req, res);
+}
+
 cws_router_t* users_routes(void) {
     cws_router_t* r = cws_router_new();
     if (!r) return NULL;
@@ -292,6 +296,7 @@ cws_router_t* users_routes(void) {
     cws_router_add(r, CWS_M_POST, "/signin", user_signin_handler);
     cws_router_add(r, CWS_M_POST, "/", user_new_handler);
     cws_router_add(r, CWS_M_POST, "/refresh_token", user_refresh_handler);
+    cws_router_add(r, CWS_M_POST, "/logout", user_logout_handler);
 
     /* Sub-router protegido (cookies + CSRF + IP): GET /me. */
     cws_router_t* prot = cws_router_new();

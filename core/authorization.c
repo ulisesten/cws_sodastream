@@ -34,6 +34,9 @@ struct authorization {
 
 static authorization_t* g_auth = NULL;
 
+/* tipoRegistro de procUsersProc para logout (rota usu_salt). */
+#define AUTH_PROC_USU_LOGOUT 2
+
 /* Emite un Set-Cookie (definido abajo; se usa en signin y refresh). */
 static void set_cookie(cws_response_t* res, const char* name,
                        const char* value, const char* path,
@@ -508,6 +511,97 @@ void authorization_refresh(cws_request_t* req, cws_response_t* res) {
     cws_response_body(res, body, strlen(body), CWS_MT_APPLICATION_JSON);
     cws_response_send(res);
     free_ctx(req);
+}
+
+/* Logout global: rota el usu_salt del usuario. Todos sus tokens (access y
+ * refresh) dejan de validar el chequeo de salt del middleware. */
+static int rotate_user_salt(authorization_t* auth, const char* hashed_correo) {
+    char* salt = jwt_core_nanoid(10);
+    if (!salt) return CWS_ERR_NOMEM;
+    sql_param_t params[3];
+    params[0].name = "tipoRegistro";
+    params[0].type = SQL_PT_INT;
+    params[0].val.as_int = AUTH_PROC_USU_LOGOUT;
+    params[1].name = "usu_correo";
+    params[1].type = SQL_PT_STRING;
+    params[1].val.as_string = hashed_correo;
+    params[2].name = "usu_salt";
+    params[2].type = SQL_PT_STRING;
+    params[2].val.as_string = salt;
+    sql_result_t out;
+    int rc = sql_eject_store(auth->sql, "procUsersProc", AUTH_DB, params, 3,
+                             &out);
+    sql_result_free(&out);
+    free(salt);
+    return rc;
+}
+
+/* Endpoint POST /api/v1/users/logout (cookie + CSRF). */
+void authorization_logout(cws_request_t* req, cws_response_t* res) {
+    if (!g_auth) {
+        send_json_error(res, 500, "Servicio no inicializado");
+        return;
+    }
+
+    char* token = cookie_value(req, "access_token");
+    char* csrf = header_dup(req, "x-csrf-token");
+    if (!token || !csrf) {
+        send_json_error(res, 401, "No credentials are present.");
+        free(token);
+        free(csrf);
+        return;
+    }
+
+    jwt_gost_payload_t* payload = jwt_gost_verify(g_auth->jwt, token);
+    bool csrf_valid = jwt_verify_csrf_token(g_auth->jwt, csrf);
+    free(token);
+    free(csrf);
+
+    if (!payload || !csrf_valid) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
+    char* ip = client_ip(res);
+    int ip_ok = ip && payload->user.ip && strcmp(ip, payload->user.ip) == 0;
+    free(ip);
+    if (!ip_ok) {
+        jwt_payload_free(payload);
+        send_json_error(res, 401, "Authentication rejected.");
+        return;
+    }
+
+    if (!authorize_request(g_auth, req, res, payload)) {
+        jwt_payload_free(payload);
+        free_ctx(req);
+        return;
+    }
+
+    char* hashed = jwt_core_hash_hex(payload->user.usu_correo);
+    int rc = hashed ? rotate_user_salt(g_auth, hashed) : CWS_ERR_GENERIC;
+    free(hashed);
+    /* free_ctx libera el payload (ya está en req->__user). */
+    free_ctx(req);
+
+    if (rc != CWS_OK) {
+        send_json_error(res, 500, "No se pudo cerrar sesión");
+        return;
+    }
+
+    /* Limpia las cookies con los MISMOS atributos (Domain/Path/Secure/
+     * SameSite) para que el navegador las borre. Max-Age=0. */
+    set_cookie(res, "access_token", "", "/api/v1", 0, 1, g_auth->is_prod);
+    set_cookie(res, "csrf_token", "", "/", 0, 0, g_auth->is_prod);
+    set_cookie(res, "refresh_token", "",
+               "/api/v1/users/refresh_token", 0, 1, g_auth->is_prod);
+    set_cookie(res, "refresh_csrf_token", "", "/", 0, 0, g_auth->is_prod);
+
+    const char* body = "{\"success\":true,\"error\":0,"
+                       "\"msg\":\"Sesion cerrada\"}";
+    cws_response_status(res, 200);
+    cws_response_body(res, body, strlen(body), CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
 }
 
 /* ------------------------------------------------------------------ */

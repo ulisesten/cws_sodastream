@@ -149,6 +149,18 @@ curl https://cws.sodastream.fun/api/v1/users/me \
 ```
 - `401` → `"No credentials are present."` o `"Authentication rejected."`
 
+### `POST /api/v1/users/logout`
+Cierra la sesión. Requiere cookie **`access_token`** y header
+**`X-CSRF-Token`**. Rota el `usu_salt` del usuario (revoca **todos** sus
+tokens) y limpia `access_token`/`csrf_token`.
+
+```bash
+curl -i -X POST https://cws.sodastream.fun/api/v1/users/logout \
+  -b "access_token=<...>" -H "X-CSRF-Token: <csrf_token>"
+```
+- `200` → `{"success":true,"error":0,"msg":"Sesion cerrada"}` + `Set-Cookie` de borrado
+- `401` credenciales/CSRF inválidos
+
 ---
 
 ## Auth móvil (Bearer)
@@ -191,6 +203,17 @@ curl https://cws.sodastream.fun/api/v1/auth/mobile/me \
 **200** `{ "usu_id": 1017, "usu_nombre": "CWS", "usu_correo": "user@test.local" }`
 - `401` sin token / token inválido
 
+### `POST /api/v1/auth/mobile/logout`
+Header **`Authorization: Bearer <access_token>`**. Rota el `usu_salt` del
+usuario, revocando **todos** sus tokens (access y refresh).
+
+```bash
+curl -X POST https://cws.sodastream.fun/api/v1/auth/mobile/logout \
+  -H "Authorization: Bearer <access_token>"
+```
+**200** `{ "success": true, "error": 0, "msg": "Sesion cerrada" }`
+- `401` sin token / token inválido
+
 ---
 
 ## Estáticos HLS
@@ -219,6 +242,9 @@ curl -i https://cws.sodastream.fun/hls/videos/playlist.m3u8
   + `refresh_token` (`REFRESH_TOKEN_EXPIRATION_DAYS`, def. 7 días).
   Cada request valida además la **IP** de origen y el **salt** contra la BD.
 - **Móvil**: mismos tokens, sin IP ni CSRF.
+- **Logout / revocación**: `POST /logout` (web y móvil) rota el `usu_salt` del
+  usuario; como cada request compara el salt del token con el de la BD, todos
+  los tokens previos (access y refresh) quedan invalidados de inmediato.
 - **Contraseñas**: PBKDF2-HMAC-Streebog con salt aleatorio (16 B) y
   `PASSWORD_PEPPER` opcional; iteraciones `PASSWORD_KDF_ITERATIONS`
   (def. 100000). `password_verify` acepta hashes legacy (Streebog-256) y avisa
@@ -240,8 +266,8 @@ se responde el `Origin` + `Access-Control-Allow-Credentials: true`
 # Servidor
 PORT=8080
 HLS_DIR=public/hls/videos
-CORS_ORIGINS=https://video.sodastream.fun
-COOKIE_DOMAIN=.sodastream.fun
+CORS_ORIGINS=https://midominio.com
+COOKIE_DOMAIN=.midominio.com
 
 # BD (SQL Server / ODBC)
 DB_DRIVER=ODBC Driver 17 for SQL Server

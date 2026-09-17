@@ -22,6 +22,10 @@ static CWS_HANDLER(mobile_refresh_handler) {
     authorization_mobile_refresh(req, res);
 }
 
+static CWS_HANDLER(mobile_logout_handler) {
+    authorization_mobile_logout(req, res);
+}
+
 /* GET /me — ruta protegida por el middleware Bearer. Devuelve el usuario
  * autorizado (valida el access_token móvil). */
 static CWS_HANDLER(mobile_me_handler) {
@@ -47,6 +51,7 @@ cws_router_t* mobile_routes(void) {
     if (!r) return NULL;
     cws_router_add(r, CWS_M_POST, "/signin",        mobile_signin_handler);
     cws_router_add(r, CWS_M_POST, "/refresh_token", mobile_refresh_handler);
+    cws_router_add(r, CWS_M_POST, "/logout",        mobile_logout_handler);
 
     /* Sub-router protegido: GET /me (Bearer), sin afectar a signin/refresh. */
     cws_router_t* prot = cws_router_new();

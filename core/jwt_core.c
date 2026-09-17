@@ -378,6 +378,19 @@ char* jwt_core_hash_hex(const char* data) {
     return out;
 }
 
+char* jwt_core_nanoid(size_t len) {
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+    if (len == 0 || len > 256) return NULL;
+    uint8_t raw[256];
+    if (gost_rng_system(NULL, raw, len) != GOST_OK) return NULL;
+    char* out = (char*)malloc(len + 1);
+    if (!out) return NULL;
+    for (size_t i = 0; i < len; i++) out[i] = alphabet[raw[i] & 0x3F];
+    out[len] = '\0';
+    return out;
+}
+
 bool jwt_safe_compare(const char* a, const char* b) {
     if (!a || !b) return false;
     size_t la = strlen(a), lb = strlen(b);
