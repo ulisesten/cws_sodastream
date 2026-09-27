@@ -39,6 +39,10 @@ typedef struct app_config {
     /* Identificadores de canal (jwt_web + jwt_mobile). Configurables. */
     uint32_t web_session_type;    /* WEB_SESSION_TYPE, default 1 */
     uint32_t mobile_session_type; /* MOBILE_SESSION_TYPE, default 2 */
+
+    /* NAS / miniaturas (videos_domain.c): base de las imágenes de
+     * thumbnails (API_NAS en la referencia). */
+    char* api_nas;           /* API_NAS, default "" (sin NAS) */
 } app_config_t;
 
 /**

@@ -111,6 +111,8 @@ const char* cfg_getenv(const char* key) {
             return env_get("CORS_ORIGINS");
         case 0x096d198cu: /* COOKIE_DOMAIN */
             return env_get("COOKIE_DOMAIN");
+        case 0x4d74448eu: /* API_NAS */
+            return env_get("API_NAS");
         default:
             return env_get(key);
     }
@@ -157,6 +159,9 @@ app_config_t* configuration_new(void) {
     const char* mst = cfg_getenv("MOBILE_SESSION_TYPE");
     if (mst && *mst) cfg->mobile_session_type = (uint32_t)strtoul(mst, NULL, 10);
 
+    /* NAS de miniaturas (API_NAS en la referencia; vacío = sin NAS). */
+    cfg->api_nas = dup_or(cfg_getenv("API_NAS"), "");
+
     const char* e = cfg_getenv("DB_ENCRYPT");
     cfg->db_encrypt = !(e && !strcmp(e, "false"));
     const char* t = cfg_getenv("DB_TRUST_CERTIFICATE");
@@ -181,6 +186,7 @@ void configuration_free(app_config_t* cfg) {
     free(cfg->db_database);
     free(cfg->secret_key);
     free(cfg->x_vector);
+    free(cfg->api_nas);
     free(cfg);
 }
 

@@ -5,8 +5,12 @@ cws_router_t* videos_routes(void) {
     cws_router_t* r = cws_router_new();
     if (!r) return NULL;
 
+    cws_router_add(r, CWS_M_GET, "/thumbnails/:name", get_thumbnail);
     cws_router_add(r, CWS_M_GET, "/",              get_all_videos);
     cws_router_add(r, CWS_M_GET, "/popular",       get_popular_videos);
+    cws_router_add(r, CWS_M_PUT,  "/:id/views",    insert_view);
+    cws_router_add(r, CWS_M_GET,  "/:id/series/relacionados",
+                   get_series_videos);
     cws_router_add(r, CWS_M_GET, "/:id",           get_video_by_id);
 
     return r;

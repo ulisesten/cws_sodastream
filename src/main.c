@@ -15,6 +15,7 @@
 #include "api/v1/routes/users/users_routes.h"
 #include "api/v1/routes/users/domain/users_domain.h"
 #include "api/v1/routes/mobile/mobile_routes.h"
+#include "api/v1/routes/app/releases_routes.h"
 #include "authorization.h"
 #include "authorization_mobile.h"
 #include "configuration.h"
@@ -106,6 +107,9 @@ int main(void) {
     }
     users_domain_init();
 
+    /* Acceso a datos del módulo releases (procCatAppReleasesCons). */
+    releases_routes_init();
+
     /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
 
 
@@ -140,6 +144,11 @@ int main(void) {
      *   GET  /api/v1/auth/mobile/me            -> protegido (Bearer)
      */
     cws_app_mount(g_app, "/api/v1/auth/mobile", mobile_routes());
+
+    /* Router del módulo releases — rutas relativas al punto de montaje:
+     *   GET /api/v1/app/releases -> versiones de la app
+     */
+    cws_app_mount(g_app, "/api/v1/app", releases_routes());
 
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */

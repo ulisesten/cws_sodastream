@@ -12,6 +12,7 @@ autenticación web/móvil con tokens GOST y servidor estático HLS.
 
 - [Generales](#generales)
 - [Videos](#videos)
+- [App](#app)
 - [Auth web (cookies + CSRF)](#auth-web-cookies--csrf)
 - [Auth móvil (Bearer)](#auth-móvil-bearer)
 - [Estáticos HLS](#estáticos-hls)
@@ -72,6 +73,69 @@ curl https://cws.sodastream.fun/api/v1/videos/SbW6CGLsXLf
 | 200 | OK (array, posiblemente vacío) |
 | 500 | error de BD/procedimiento |
 | 400 | falta `:id` |
+
+### `GET /api/v1/videos/:id/series/relacionados`
+Videos de la serie del video (`tipoConsulta = 1`, `vid_id = :id` **numérico**).
+Alimenta la barra de relacionados del reproductor.
+
+```bash
+curl https://cws.sodastream.fun/api/v1/videos/4/series/relacionados
+```
+**200**
+```json
+{ "msg": "Se obtuvieron los videos relacionados correctamente.",
+  "success": true, "error": 0, "data": [ /* videos de la serie */ ] }
+```
+Sin resultados: `{ "msg": "Sin resultados.", "success": true, "error": 0, "data": null }`.
+- `400` `:id` no numérico · `500` error de BD
+
+### `PUT /api/v1/videos/:id/views`
+Incrementa el contador de vistas (`procCatVideosProc`,
+`tipoRegistro = "CAT_VIDEOS_VIEW"`, `vid_id = :id` **numérico**). `:id` = `vid_id`.
+
+```bash
+curl -X PUT https://cws.sodastream.fun/api/v1/videos/1/views
+```
+**200** `{ "msg": "", "success": "true", "error": 0 }`
+- `400` `:id` no numérico · `500` error de BD
+
+### `GET /api/v1/videos/thumbnails/:name`
+Sirve la imagen de la miniatura (`tipoConsulta = 3`). `:name` es
+`<thu_id_public>` o `<thu_id_public>.<ext>` (el último punto separa la
+extensión). Los archivos se resuelven en **`API_NAS`** por el nombre base del
+`thu_path` de la BD, con fallback de extensiones `jpg,jpeg,png,gif,webp`.
+Responde la imagen vía `sendfile` con su `Content-Type`.
+
+```bash
+curl -O https://cws.sodastream.fun/api/v1/videos/thumbnails/OPtESlF0bjg.jpg
+```
+| Código | Caso |
+|---|---|
+| 200 | imagen (Content-Type por extensión) |
+| 200 | JSON `{"msg":"Ocurrió un error al consultar la imagen.","success":false,"error":1}` si la miniatura no existe en BD |
+| 404 | JSON `{"msg":"Imagen no encontrada","success":false,"error":1}` si no hay archivo |
+
+---
+
+## App
+
+Montados en `/api/v1/app`. Públicos (sin autenticación).
+
+### `GET /api/v1/app/releases`
+Versiones/releases de la aplicación (`procCatAppReleasesCons`,
+`tipoConsulta = 1`).
+
+```bash
+curl https://cws.sodastream.fun/api/v1/app/releases
+```
+**200**
+```json
+{ "success": true, "error": 0, "msg": "Releases obtenidos exitosamente",
+  "data": [ { "rel_id": 1, "rel_version": "0.1", "rel_path": "…",
+              "rel_type": "TV", "rel_date": "…", "rel_description": "…" } ] }
+```
+- `404` `{"success":false,"error":1,"msg":"No se encontraron releases","data":[]}`
+- `500` error de BD
 
 ---
 
@@ -266,6 +330,7 @@ se responde el `Origin` + `Access-Control-Allow-Credentials: true`
 # Servidor
 PORT=8080
 HLS_DIR=public/hls/videos
+API_NAS=/ruta/nas/images/videos
 CORS_ORIGINS=https://midominio.com
 COOKIE_DOMAIN=.midominio.com
 

@@ -726,7 +726,17 @@ static int fetch_result_set(SQLHSTMT stmt, sql_result_t* res) {
     SQLSMALLINT ncols = 0;
 
     memset(res, 0, sizeof(*res));
+
+    /* Los SELECT de asignación (p. ej. `SELECT TOP 1 @x = col FROM ...`)
+     * no producen result set: avanzar hasta el primero que sí tenga
+     * columnas (mismo comportamiento que mssql en la referencia Node,
+     * cuyos recordsets omiten esos SELECT). */
     r = SQLNumResultCols(stmt, &ncols);
+    while (SQL_SUCCEEDED(r) && ncols <= 0) {
+        r = SQLMoreResults(stmt);
+        if (!(r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)) return CWS_OK;
+        r = SQLNumResultCols(stmt, &ncols);
+    }
     if (!SQL_SUCCEEDED(r) || ncols <= 0) return CWS_OK;
 
     out_col_t* cols = (out_col_t*)calloc((size_t)ncols, sizeof(out_col_t));
