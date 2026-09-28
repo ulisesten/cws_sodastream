@@ -16,6 +16,8 @@
 
 #include "configuration.h"
 #include "sql_eject.h"
+#include "authorization.h"
+#include "jwt.h"
 
 #define VIDEOS_DB "soda_stream"
 
@@ -578,4 +580,182 @@ void get_thumbnail(cws_request_t* req, cws_response_t* res) {
     cws_response_header(res, "Content-Type", "%s", thumb_mime(resolved));
     cws_response_sendfile_ex(res, resolved, "application/octet-stream", 0);
     free(resolved);
+}
+
+/* ------------------------------------------------------------------ */
+/* POST /api/v1/videos/external                                        */
+/* ------------------------------------------------------------------ */
+
+/* reject(res, status, msg): {"success":false,"error":1,"msg":"..."} (mismo
+ * contrato que el módulo de users y que la referencia express). */
+static void ext_reject(cws_response_t* res, int status, const char* msg) {
+    char* esc = json_escape_dup(msg);
+    if (!esc) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    size_t cap = strlen(esc) + 48;
+    char* body = (char*)malloc(cap);
+    if (!body) {
+        free(esc);
+        cws_response_send_error(res, 500);
+        return;
+    }
+    snprintf(body, cap, "{\"success\":false,\"error\":1,\"msg\":%s}", esc);
+    free(esc);
+    cws_response_status(res, status);
+    cws_response_body_owned(res, body, strlen(body), CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
+/*
+ * Registra un video de fuente externa (solo URL m3u8 + miniatura existente,
+ * sin subida física). Espejo de videos_domain.js insert_external_video +
+ * routes.js POST /external, adaptado a la rama CAT_VIDEOS_EXTERNAL_INS.
+ *
+ * Requiere el usuario autenticado (middleware web: cookie access_token +
+ * x-csrf-token + IP); toma su usu_id como vid_id_usuario. Genera vid_id_public
+ * con nanoid (PUBLIC_ID_LENGTH) y ejecuta procCatVideosProc. En éxito responde
+ * el DTO subir_video_response:
+ *   {"msg","success","error","data":{"vid_id","vid_thumbnail"}}
+ * (vid_thumbnail = vid_id_thu_public de la miniatura; null si no hay).
+ *
+ * Body JSON: vid_nombre* , vid_path* , vid_tags?, vid_id_thumbnail? (int).
+ */
+void insert_external_video(cws_request_t* req, cws_response_t* res) {
+    const jwt_user_t* u = authorization_request_user(req);
+    if (!u) {
+        cws_response_send_error(res, 401);
+        return;
+    }
+    if (!g_sql) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+
+    /* Cuerpo JSON NUL-terminado (req->body no lo está). */
+    char* body = NULL;
+    if (req->body && req->body_len > 0 && req->body_len <= 65536) {
+        body = (char*)malloc(req->body_len + 1);
+        if (body) {
+            memcpy(body, req->body, req->body_len);
+            body[req->body_len] = '\0';
+        }
+    }
+    if (!body) {
+        ext_reject(res, 400, "Cuerpo de la petición inválido.");
+        return;
+    }
+
+    char* vid_nombre = NULL;
+    char* vid_path = NULL;
+    char* vid_tags = NULL;
+    char* vid_id_public = NULL;
+    int64_t vid_id_thumbnail = 0;
+    jwt_json_get_string(body, "vid_nombre", &vid_nombre);
+    jwt_json_get_string(body, "vid_path", &vid_path);
+    jwt_json_get_string(body, "vid_tags", &vid_tags);
+    jwt_json_get_int(body, "vid_id_thumbnail", &vid_id_thumbnail);
+
+    if (!vid_nombre || !*vid_nombre || !vid_path || !*vid_path) {
+        ext_reject(res, 400, "Faltan datos obligatorios (vid_nombre, vid_path)");
+        goto done;
+    }
+
+    /* vid_id_public = nanoid(PUBLIC_ID_LENGTH); default 11 como la BD. */
+    const char* len_s = cfg_getenv("PUBLIC_ID_LENGTH");
+    long idlen = (len_s && *len_s) ? strtol(len_s, NULL, 10) : 11;
+    if (idlen <= 0 || idlen > 64) idlen = 11;
+    vid_id_public = jwt_core_nanoid((size_t)idlen);
+    if (!vid_id_public) {
+        cws_response_send_error(res, 500);
+        goto done;
+    }
+
+    sql_param_t params[7];
+    size_t n = 0;
+    params[n].name = "tipoRegistro";
+    params[n].type = SQL_PT_STRING;
+    params[n].val.as_string = "CAT_VIDEOS_EXTERNAL_INS";
+    n++;
+    params[n].name = "vid_id_public";
+    params[n].type = SQL_PT_STRING;
+    params[n].val.as_string = vid_id_public;
+    n++;
+    params[n].name = "vid_nombre";
+    params[n].type = SQL_PT_STRING;
+    params[n].val.as_string = vid_nombre;
+    n++;
+    params[n].name = "vid_path";
+    params[n].type = SQL_PT_STRING;
+    params[n].val.as_string = vid_path;
+    n++;
+    params[n].name = "vid_id_usuario";
+    params[n].type = SQL_PT_INT;
+    params[n].val.as_int = u->usu_id;
+    n++;
+    params[n].name = "vid_tags";
+    params[n].type = vid_tags ? SQL_PT_STRING : SQL_PT_NULL;
+    params[n].val.as_string = vid_tags;
+    n++;
+    params[n].name = "vid_id_thumbnail";
+    params[n].type = SQL_PT_INT;
+    params[n].val.as_int = vid_id_thumbnail;
+    n++;
+
+    sql_result_t out;
+    int rc = sql_eject_store(g_sql, "procCatVideosProc", VIDEOS_DB, params, n,
+                             &out);
+    if (rc != CWS_OK) {
+        cws_response_send_error(res, 500);
+        goto done;
+    }
+
+    /* DTO subir_video_response. */
+    char* resp = NULL;
+    if (out.nrows == 0) {
+        resp = strdup("{\"msg\":\"Error al procesar el resultado.\","
+                      "\"success\":false,\"error\":1,\"data\":null}");
+    } else {
+        const char* msg = field_str(&out, "msg");
+        const char* success = field_str(&out, "success");
+        int64_t error = field_int(&out, "error", 0);
+        int64_t vid_id = field_int(&out, "vid_id", 0);
+        const char* thu = field_str(&out, "vid_id_thu_public");
+
+        char* esc_msg = json_escape_dup(msg ? msg : "");
+        char* esc_thu = thu ? json_escape_dup(thu) : NULL;
+        if (esc_msg) {
+            char success_json[16];
+            snprintf(success_json, sizeof(success_json), "\"%s\"",
+                     success ? success : "false");
+            size_t cap = strlen(esc_msg) +
+                         (esc_thu ? strlen(esc_thu) : 4) + 128;
+            resp = (char*)malloc(cap);
+            if (resp) {
+                snprintf(resp, cap,
+                         "{\"msg\":%s,\"success\":%s,\"error\":%lld,"
+                         "\"data\":{\"vid_id\":%lld,\"vid_thumbnail\":%s}}",
+                         esc_msg, success_json, (long long)error,
+                         (long long)vid_id, esc_thu ? esc_thu : "null");
+            }
+        }
+        free(esc_msg);
+        free(esc_thu);
+    }
+    sql_result_free(&out);
+
+    if (!resp) {
+        cws_response_send_error(res, 500);
+        goto done;
+    }
+    cws_response_body_owned(res, resp, strlen(resp), CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+
+done:
+    free(body);
+    free(vid_nombre);
+    free(vid_path);
+    free(vid_tags);
+    free(vid_id_public);
 }

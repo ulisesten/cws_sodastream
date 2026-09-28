@@ -20,7 +20,7 @@ ALTER PROCEDURE [dbo].[procCatVideosProc]
     @vid_temporada   SMALLINT,
     @vid_thumb_path  varchar(1000),
     @vid_id_thu_public varchar(21),
-    --@vid_id_thumbnail int,
+    @vid_id_thumbnail int,
     @vid_capitulo   SMALLINT,
     @vid_id_temporada SMALLINT,
 
@@ -256,6 +256,56 @@ BEGIN TRANSACTION
             success = @success, 
             msg= @msg, 
             error =  @error
+    END
+
+
+    IF @tipoRegistro = 'CAT_VIDEOS_EXTERNAL_INS' BEGIN
+        BEGIN TRY
+
+                SELECT
+                    @vid_id_thu_public = thu.thu_id_public
+                FROM
+                    cat_videos_thumbnails thu
+                WHERE
+                    thu_id = @vid_id_thumbnail
+
+                INSERT into cat_videos (
+                    vid_id_public, --- nanoid generated id varchar(11)
+                    vid_nombre,
+                    vid_path,
+                    vid_thumbnail,  --- varchar(11)
+                    vid_id_usuario, --- int
+                    vid_tags,
+                    fecha_alta,
+                    usuario_alta
+                ) VALUES (
+                    @vid_id_public,
+                    @vid_nombre,
+                    @vid_path,
+                    @vid_id_thu_public,
+                    @vid_id_usuario,
+                    @vid_tags,
+                    @fecha_alta,
+                    @usuario_alta
+                )
+
+                SELECT @vid_id = @@IDENTITY
+
+                SELECT @msg = 'Video Externo subido correctamente.', @error = 0, @success = 'true'
+        END TRY
+        BEGIN CATCH  
+            SELECT   @msg = ERROR_MESSAGE(), @error = @@ERROR, @error_sev = ERROR_SEVERITY(),@error_state = ERROR_STATE()
+            RAISERROR(@msg,@error_sev,@error_state);
+            ROLLBACK TRANSACTION
+            RETURN
+        END CATCH
+
+        SELECT 
+            success = @success, 
+            msg= @msg, 
+            error=  @error,
+            vid_id = @vid_id,
+            vid_id_thu_public = @vid_id_thu_public
     END
 
 

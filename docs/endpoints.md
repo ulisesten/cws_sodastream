@@ -43,9 +43,9 @@ Métricas en formato Prometheus (text/plain).
 ## Videos
 
 Montados en `/api/v1/videos`. Requieren BD (`procCatVideosCons`).
-Públicos (sin autenticación). Responden un **array JSON de filas** (las columnas
-dependen de la consulta; p.ej. `vid_id`, `vid_id_public`, `vid_nombre`,
-`vid_path`, `vid_descripcion`, `vid_fecha`, ...).
+Públicos (sin autenticación), salvo `POST /external`. Responden un **array JSON
+de filas** (las columnas dependen de la consulta; p.ej. `vid_id`,
+`vid_id_public`, `vid_nombre`, `vid_path`, `vid_descripcion`, `vid_fecha`, ...).
 
 ### `GET /api/v1/videos`
 Listado completo (`tipoConsulta = 4`).
@@ -114,6 +114,38 @@ curl -O https://cws.sodastream.fun/api/v1/videos/thumbnails/OPtESlF0bjg.jpg
 | 200 | imagen (Content-Type por extensión) |
 | 200 | JSON `{"msg":"Ocurrió un error al consultar la imagen.","success":false,"error":1}` si la miniatura no existe en BD |
 | 404 | JSON `{"msg":"Imagen no encontrada","success":false,"error":1}` si no hay archivo |
+
+### `POST /api/v1/videos/external`
+**Protegido** (cookie `access_token` + `x-csrf-token` + IP; ver
+[Auth web](#auth-web-cookies--csrf)). Es la excepción del módulo. Registra un
+video de fuente externa (URL m3u8 + miniatura existente, sin subida física) a
+nombre del usuario autenticado. `procCatVideosProc`,
+`tipoRegistro = "CAT_VIDEOS_EXTERNAL_INS"`; genera `vid_id_public` con nanoid
+(`PUBLIC_ID_LENGTH`).
+
+Body JSON:
+
+| Campo | Tipo | Requerido | Notas |
+|---|---|---|---|
+| `vid_nombre` | string | sí | |
+| `vid_path` | string | sí | URL del `.m3u8` externo |
+| `vid_tags` | string | no | |
+| `vid_id_thumbnail` | int | no | `thu_id` de `cat_videos_thumbnails` |
+
+```bash
+curl -X POST https://cws.sodastream.fun/api/v1/videos/external \
+  -H 'Content-Type: application/json' \
+  -b cookies.txt -H "X-CSRF-Token: $CSRF" \
+  -d '{"vid_nombre":"Mi video","vid_path":"https://cdn.example.com/x.m3u8","vid_id_thumbnail":1}'
+```
+**200**
+```json
+{ "msg": "Video Externo subido correctamente.", "success": "true", "error": 0,
+  "data": { "vid_id": 8, "vid_thumbnail": "SbW6CGLsXLf" } }
+```
+`data.vid_thumbnail` es el `thu_id_public` de la miniatura (`null` si no se pasó
+`vid_id_thumbnail` o no existe).
+- `400` falta `vid_nombre`/`vid_path` · `401` sin sesión válida · `500` error de BD
 
 ---
 

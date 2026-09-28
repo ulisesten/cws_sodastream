@@ -32,4 +32,14 @@ void insert_view(cws_request_t* req, cws_response_t* res);
  */
 void get_series_videos(cws_request_t* req, cws_response_t* res);
 
+/*
+ * POST /api/v1/videos/external — registra un video de fuente externa (URL
+ * m3u8 + miniatura existente, sin subida física) a nombre del usuario
+ * autenticado (ruta protegida: cookie + CSRF + IP). Genera vid_id_public
+ * (nanoid de PUBLIC_ID_LENGTH) y ejecuta procCatVideosProc con
+ * tipoRegistro = "CAT_VIDEOS_EXTERNAL_INS". Responde el DTO
+ * subir_video_response.
+ */
+void insert_external_video(cws_request_t* req, cws_response_t* res);
+
 #endif
