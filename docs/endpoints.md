@@ -129,8 +129,9 @@ Body JSON:
 |---|---|---|---|
 | `vid_nombre` | string | sí | |
 | `vid_path` | string | sí | URL del `.m3u8` externo |
+| `vid_id_thumbnail` | int o string (`"1"`) | no | `thu_id` de `cat_videos_thumbnails` |
+| `vid_descripcion` | string | no | la rama externa del SP no la almacena |
 | `vid_tags` | string | no | |
-| `vid_id_thumbnail` | int | no | `thu_id` de `cat_videos_thumbnails` |
 
 ```bash
 curl -X POST https://cws.sodastream.fun/api/v1/videos/external \

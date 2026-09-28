@@ -650,12 +650,22 @@ void insert_external_video(cws_request_t* req, cws_response_t* res) {
     char* vid_nombre = NULL;
     char* vid_path = NULL;
     char* vid_tags = NULL;
+    char* vid_id_thumbnail_s = NULL;
     char* vid_id_public = NULL;
     int64_t vid_id_thumbnail = 0;
     jwt_json_get_string(body, "vid_nombre", &vid_nombre);
     jwt_json_get_string(body, "vid_path", &vid_path);
     jwt_json_get_string(body, "vid_tags", &vid_tags);
-    jwt_json_get_int(body, "vid_id_thumbnail", &vid_id_thumbnail);
+    /* vid_id_thumbnail puede venir como string ("1") o número (1). */
+    if (jwt_json_get_string(body, "vid_id_thumbnail", &vid_id_thumbnail_s) == 0 &&
+        vid_id_thumbnail_s) {
+        char* end = NULL;
+        long v = strtol(vid_id_thumbnail_s, &end, 10);
+        if (end && end != vid_id_thumbnail_s && *end == '\0')
+            vid_id_thumbnail = v;
+    } else {
+        jwt_json_get_int(body, "vid_id_thumbnail", &vid_id_thumbnail);
+    }
 
     if (!vid_nombre || !*vid_nombre || !vid_path || !*vid_path) {
         ext_reject(res, 400, "Faltan datos obligatorios (vid_nombre, vid_path)");
@@ -757,5 +767,6 @@ done:
     free(vid_nombre);
     free(vid_path);
     free(vid_tags);
+    free(vid_id_thumbnail_s);
     free(vid_id_public);
 }
