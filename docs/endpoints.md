@@ -283,6 +283,10 @@ apps Android: los tokens van en el **body** y se envían como
 ### `POST /api/v1/auth/mobile/refresh_token`
 Header **`X-Refresh-Token: <refresh_token>`**.
 
+> Estado actual y flujo completo (login, refresh, rotación, revocación) para
+> clientes: ver **`AUTH_README.md`**. El refresh actual no rota el token ni
+> devuelve `expires_in`/`refresh_expires_in` (ver defectos y contrato objetivo).
+
 ```bash
 curl -X POST https://cws.sodastream.fun/api/v1/auth/mobile/refresh_token \
   -H "X-Refresh-Token: <refresh_token>"
