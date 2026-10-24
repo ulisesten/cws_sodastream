@@ -290,6 +290,45 @@ static void free_mobile_ctx(cws_request_t* req) {
     }
 }
 
+jwt_mobile_payload_t authorization_mobile_try_verify(const char* access_token) {
+    if (!g_auth || !access_token || !*access_token) return NULL;
+
+    jwt_mobile_payload_t payload =
+        jwt_mobile_verify_access_token(g_auth->jwt, access_token);
+    if (!payload) return NULL;
+
+    /* Revalida el salt contra el DAO (logout/revocación), igual que el
+     * middleware, pero sin escribir respuesta HTTP. */
+    char* hashed = jwt_core_hash_hex(payload->user.usu_correo);
+    sql_result_t* dao = hashed ? authorization_mobile_user_dao(g_auth, hashed)
+                               : NULL;
+    free(hashed);
+    if (!dao || dao->nrows == 0) {
+        sql_result_free(dao);
+        jwt_mobile_payload_free(payload);
+        return NULL;
+    }
+    char* dao_salt = dao_str(dao, "usu_salt");
+    sql_result_free(dao);
+
+    int salt_ok = 0;
+    if (payload->user.usu_salt && dao_salt) {
+        char* tok_salt = strdup(payload->user.usu_salt);
+        char* db_salt = strdup(dao_salt);
+        if (tok_salt && db_salt)
+            salt_ok = jwt_safe_compare(trim_inplace(tok_salt),
+                                       trim_inplace(db_salt));
+        free(tok_salt);
+        free(db_salt);
+    }
+    free(dao_salt);
+    if (!salt_ok) {
+        jwt_mobile_payload_free(payload);
+        return NULL;
+    }
+    return payload;
+}
+
 /* ------------------------------------------------------------------ */
 /* middlewares                                                        */
 /* ------------------------------------------------------------------ */

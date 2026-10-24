@@ -16,6 +16,7 @@
 #include "api/v1/routes/users/domain/users_domain.h"
 #include "api/v1/routes/mobile/mobile_routes.h"
 #include "api/v1/routes/app/releases_routes.h"
+#include "ws_api/v1/ws_v1.h"
 #include "authorization.h"
 #include "authorization_mobile.h"
 #include "configuration.h"
@@ -149,6 +150,12 @@ int main(void) {
      *   GET /api/v1/app/releases -> versiones de la app
      */
     cws_app_mount(g_app, "/api/v1/app", releases_routes());
+
+    /* WebSocket API v1: endpoint genérico de prueba en /ws/v1. El handshake
+     * usa GOST (Streebog-256); ver WS_README.md. */
+    if (ws_v1_init(g_app) != CWS_OK) {
+        fprintf(stderr, "No se pudo inicializar WebSocket (/ws/v1)\n");
+    }
 
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */

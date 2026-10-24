@@ -97,6 +97,17 @@ int authorization_mobile_signin(cws_request_t* req, cws_response_t* res);
 const jwt_user_t* authorization_mobile_request_user(const cws_request_t* req);
 bool authorization_mobile_request_authorized(const cws_request_t* req);
 
+/**
+ * \brief Valida un access token Bearer fuera del middleware, SIN escribir
+ *        respuesta HTTP: firma + expiración + session_type móvil y
+ *        revalidación de `usu_salt` contra el DAO.
+ *
+ * Pensado para canales que no son HTTP-request/response (p. ej. el upgrade
+ * WebSocket). Devuelve el payload (liberar con jwt_mobile_payload_free) o
+ * NULL si el token no es válido o el salt no coincide (logout/revocación).
+ */
+jwt_mobile_payload_t authorization_mobile_try_verify(const char* access_token);
+
 #ifdef __cplusplus
 }
 #endif
