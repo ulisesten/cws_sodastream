@@ -606,47 +606,49 @@ static void finalize_binding(bind_param_t* b) {
         b->ptr = NULL;
         b->ind = SQL_NULL_DATA;
         b->buf_len = 0;
-        return;
-    }
-    switch (b->value_kind) {
-        case VC_INT:
-            b->c_type = SQL_C_SBIGINT;
-            b->ptr = &b->i;
-            b->ind = 0;
-            b->buf_len = 0;
-            break;
-        case VC_DECIMAL:
-            b->c_type = SQL_C_DOUBLE;
-            b->ptr = &b->d;
-            b->ind = 0;
-            b->buf_len = 0;
-            break;
-        case VC_DATETIME:
-            b->c_type = SQL_C_TIMESTAMP;
-            b->ptr = &b->ts;
-            b->ind = 0;
-            b->buf_len = 0;
-            break;
-        case VC_STRING_ANSI:
-            b->c_type = SQL_C_CHAR;
-            b->ptr = b->str;
-            b->ind = SQL_NTS;
-            b->buf_len = b->str ? (SQLLEN)strlen(b->str) + 1 : 1;
-            break;
-        case VC_STRING_UTF16:
-            b->c_type = SQL_C_WCHAR;
-            b->ptr = b->ws;
-            b->ind = b->ws_bytes;
-            b->buf_len = b->ws_bytes + 2;
-            break;
-        default:
-            b->c_type = SQL_C_CHAR;
-            b->ptr = NULL;
-            b->ind = SQL_NULL_DATA;
-            b->buf_len = 0;
-            break;
+    } else {
+        switch (b->value_kind) {
+            case VC_INT:
+                b->c_type = SQL_C_SBIGINT;
+                b->ptr = &b->i;
+                b->ind = 0;
+                b->buf_len = 0;
+                break;
+            case VC_DECIMAL:
+                b->c_type = SQL_C_DOUBLE;
+                b->ptr = &b->d;
+                b->ind = 0;
+                b->buf_len = 0;
+                break;
+            case VC_DATETIME:
+                b->c_type = SQL_C_TIMESTAMP;
+                b->ptr = &b->ts;
+                b->ind = 0;
+                b->buf_len = 0;
+                break;
+            case VC_STRING_ANSI:
+                b->c_type = SQL_C_CHAR;
+                b->ptr = b->str;
+                b->ind = SQL_NTS;
+                b->buf_len = b->str ? (SQLLEN)strlen(b->str) + 1 : 1;
+                break;
+            case VC_STRING_UTF16:
+                b->c_type = SQL_C_WCHAR;
+                b->ptr = b->ws;
+                b->ind = b->ws_bytes;
+                b->buf_len = b->ws_bytes + 2;
+                break;
+            default:
+                b->c_type = SQL_C_CHAR;
+                b->ptr = NULL;
+                b->ind = SQL_NULL_DATA;
+                b->buf_len = 0;
+                break;
+        }
     }
 
+    /* column_size se calcula SIEMPRE (también para NULL): SQLBindParameter
+     * rechaza size=0 con SQLSTATE=HY104 "Invalid precision value". */
     switch (b->sql_type) {
         case SQL_CHAR:
         case SQL_VARCHAR:
@@ -962,7 +964,12 @@ static int run_store(SQLHDBC dbc, bind_param_t* binds, size_t nbinds,
                              b->c_type, b->sql_type, b->column_size,
                              b->decimal_digits, b->ptr, b->buf_len, &b->ind);
         if (!SQL_SUCCEEDED(r)) {
-            log_odbc_error(SQL_HANDLE_STMT, stmt, "SQLBindParameter");
+            char what[128];
+            snprintf(what, sizeof(what),
+                     "SQLBindParameter(@%s c=%d sql=%d size=%lu digits=%d)",
+                     b->name, (int)b->c_type, (int)b->sql_type,
+                     (unsigned long)b->column_size, (int)b->decimal_digits);
+            log_odbc_error(SQL_HANDLE_STMT, stmt, what);
             SQLFreeHandle(SQL_HANDLE_STMT, stmt);
             return CWS_ERR_GENERIC;
         }
