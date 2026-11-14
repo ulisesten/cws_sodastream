@@ -12,6 +12,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "configuration.h"
 
@@ -19,8 +20,12 @@
 
 /** PROC_USU_REGISTRAR: tipoRegistro del alta de usuario. */
 #define PROC_USU_REGISTRAR 1
+/** PROC_USU_ID_PUBLIC_AGREGAR: asigna usu_id_public (mensajería). */
+#define PROC_USU_ID_PUBLIC_AGREGAR 3
 /** CONS_USU_SIGNIN: tipoConsulta de signin. */
 #define CONS_USU_SIGNIN 1
+/** CONS_USU_BY_ID_PUBLIC: tipoConsulta de búsqueda por id público. */
+#define CONS_USU_BY_ID_PUBLIC 3
 
 static sql_eject_t* g_sql = NULL;
 
@@ -93,6 +98,86 @@ sql_result_t* users_domain_signin(const char* hashed_correo) {
     params[1].name = "usu_correo";
     params[1].type = SQL_PT_STRING;
     params[1].val.as_string = hashed_correo;
+
+    sql_result_t* out = (sql_result_t*)calloc(1, sizeof(*out));
+    if (!out) return NULL;
+    int rc = sql_eject_store(g_sql, "procUsersCons", USERS_DB, params, 2,
+                             out);
+    if (rc != CWS_OK) {
+        sql_result_free(out);
+        return NULL;
+    }
+    return out;
+}
+
+sql_result_t* users_domain_set_public_id(int64_t usu_id,
+                                         const char* public_id) {
+    if (!g_sql || !public_id || !*public_id) return NULL;
+
+    /* fecha_mod = ahora (localtime, igual que el resto del alta). */
+    time_t t = time(NULL);
+    struct tm tmv;
+    memset(&tmv, 0, sizeof(tmv));
+    if (!localtime_r(&t, &tmv)) return NULL;
+    sql_datetime_t now;
+    memset(&now, 0, sizeof(now));
+    now.year = (int16_t)(tmv.tm_year + 1900);
+    now.month = (int16_t)(tmv.tm_mon + 1);
+    now.day = (int16_t)tmv.tm_mday;
+    now.hour = (int16_t)tmv.tm_hour;
+    now.minute = (int16_t)tmv.tm_min;
+    now.second = (int16_t)tmv.tm_sec;
+
+    sql_param_t params[5];
+    size_t n = 0;
+
+    params[n].name = "tipoRegistro";
+    params[n].type = SQL_PT_INT;
+    params[n].val.as_int = PROC_USU_ID_PUBLIC_AGREGAR;
+    n++;
+
+    /* usu_id es interno: solo viaja a la BD. */
+    params[n].name = "usu_id";
+    params[n].type = SQL_PT_INT;
+    params[n].val.as_int = usu_id;
+    n++;
+
+    params[n].name = "usu_id_public";
+    params[n].type = SQL_PT_STRING;
+    params[n].val.as_string = public_id;
+    n++;
+
+    params[n].name = "fecha_mod";
+    params[n].type = SQL_PT_DATETIME;
+    params[n].val.as_datetime = now;
+    n++;
+
+    params[n].name = "usuario_mod";
+    params[n].type = SQL_PT_INT;
+    params[n].val.as_int = usu_id;
+    n++;
+
+    sql_result_t* out = (sql_result_t*)calloc(1, sizeof(*out));
+    if (!out) return NULL;
+    int rc = sql_eject_store(g_sql, "procUsersProc", USERS_DB, params, n,
+                             out);
+    if (rc != CWS_OK) {
+        sql_result_free(out);
+        return NULL;
+    }
+    return out;
+}
+
+sql_result_t* users_domain_by_public_id(const char* public_id) {
+    if (!g_sql || !public_id || !*public_id) return NULL;
+
+    sql_param_t params[2];
+    params[0].name = "tipoConsulta";
+    params[0].type = SQL_PT_INT;
+    params[0].val.as_int = CONS_USU_BY_ID_PUBLIC;
+    params[1].name = "usu_id_public";
+    params[1].type = SQL_PT_STRING;
+    params[1].val.as_string = public_id;
 
     sql_result_t* out = (sql_result_t*)calloc(1, sizeof(*out));
     if (!out) return NULL;

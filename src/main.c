@@ -15,6 +15,7 @@
 #include "api/v1/routes/users/users_routes.h"
 #include "api/v1/routes/users/domain/users_domain.h"
 #include "api/v1/routes/mobile/mobile_routes.h"
+#include "api/v1/routes/messaging/messaging_routes.h"
 #include "api/v1/routes/app/releases_routes.h"
 #include "ws_api/v1/ws_v1.h"
 #include "authorization.h"
@@ -145,6 +146,12 @@ int main(void) {
      *   GET  /api/v1/auth/mobile/me            -> protegido (Bearer)
      */
     cws_app_mount(g_app, "/api/v1/auth/mobile", mobile_routes());
+
+    /* Router de mensajería instantánea (Bearer):
+     *   POST /api/v1/messaging/setup -> genera el id público del chat y lo
+     *                                  guarda en cat_usuarios.usu_id_public
+     */
+    cws_app_mount(g_app, "/api/v1/messaging", messaging_routes());
 
     /* Router del módulo releases — rutas relativas al punto de montaje:
      *   GET /api/v1/app/releases -> versiones de la app

@@ -9,6 +9,8 @@ GO
 -- ===================================================
 ALTER PROCEDURE [dbo].[procUsersProc]
     @tipoRegistro    smallint,
+    @usu_id          int,
+    @usu_id_public   char(12),
     @usu_nombre      nvarchar(100),
     @usu_ape_paterno nvarchar(100), 
     @usu_ape_materno nvarchar(100), 
@@ -28,7 +30,8 @@ AS
 BEGIN TRANSACTION
     DECLARE
         @PROC_USU_REGISTRAR SMALLINT = 1,
-        @PROC_USU_LOGOUT    SMALLINT = 2
+        @PROC_USU_LOGOUT    SMALLINT = 2,
+        @PROC_USU_ID_PUBLIC_AGREGAR SMALLINT = 3
 
     IF @tipoRegistro = @PROC_USU_REGISTRAR BEGIN
         BEGIN TRY
@@ -78,6 +81,30 @@ BEGIN TRANSACTION
                  WHERE usu_correo  = @usu_correo
 
                 SELECT @msg='Sesion cerrada', @error = 0, @success = 'true'
+        END TRY
+        BEGIN CATCH
+            SELECT   @msg = ERROR_MESSAGE(), @error = @@ERROR, @error_sev = ERROR_SEVERITY(),@error_state = ERROR_STATE()
+            RAISERROR(@msg,@error_sev,@error_state);
+            ROLLBACK TRANSACTION
+            RETURN
+        END CATCH
+
+        SELECT
+            success = @success,
+            msg= @msg,
+            error=  @error
+    END
+
+
+    IF @tipoRegistro = @PROC_USU_ID_PUBLIC_AGREGAR BEGIN
+        BEGIN TRY
+                UPDATE cat_usuarios
+                SET usu_id_public = @usu_id_public,
+                    fecha_mod   = @fecha_mod,
+                    usuario_mod = @usuario_mod
+                WHERE usu_id  = @usu_id
+
+                SELECT @msg='Id Público agregado', @error = 0, @success = 'true'
         END TRY
         BEGIN CATCH
             SELECT   @msg = ERROR_MESSAGE(), @error = @@ERROR, @error_sev = ERROR_SEVERITY(),@error_state = ERROR_STATE()

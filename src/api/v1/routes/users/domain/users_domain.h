@@ -33,4 +33,26 @@ sql_result_t* users_domain_new(const char* usu_nombre,
  */
 sql_result_t* users_domain_signin(const char* hashed_correo);
 
+/**
+ * \brief users_domain_set_public_id: asigna el identificador público de
+ *        mensajería (cat_usuarios.usu_id_public) del usuario.
+ *
+ * Ejecuta procUsersProc con tipoRegistro = PROC_USU_ID_PUBLIC_AGREGAR (3).
+ * El id lo genera el llamador (nanoid de 12). También estampa fecha_mod y
+ * usuario_mod.
+ *
+ * \return resultado malloc (liberar con sql_result_free), NULL en fallo.
+ */
+sql_result_t* users_domain_set_public_id(int64_t usu_id,
+                                         const char* public_id);
+
+/**
+ * \brief users_domain_by_public_id: busca un usuario por su id público
+ *        (procUsersCons, tipoConsulta = 3).
+ *
+ * Devuelve filas con `usu_id, usu_nombre` (TOP 30). El llamador NO debe
+ * exponer `usu_id`; es interno. \return resultado malloc, NULL en fallo.
+ */
+sql_result_t* users_domain_by_public_id(const char* public_id);
+
 #endif

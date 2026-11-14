@@ -15,6 +15,7 @@ autenticación web/móvil con tokens GOST y servidor estático HLS.
 - [App](#app)
 - [Auth web (cookies + CSRF)](#auth-web-cookies--csrf)
 - [Auth móvil (Bearer)](#auth-móvil-bearer)
+- [Mensajería](#mensajería)
 - [Estáticos HLS](#estáticos-hls)
 - [Modelo de autenticación](#modelo-de-autenticación)
 - [Configuración (.env)](#configuración-env)
@@ -314,6 +315,54 @@ curl -X POST https://cws.sodastream.fun/api/v1/auth/mobile/logout \
 ```
 **200** `{ "success": true, "error": 0, "msg": "Sesion cerrada" }`
 - `401` sin token / token inválido
+
+---
+
+## Mensajería
+
+Montado en `/api/v1/messaging`. Requiere access token móvil (**Bearer**).
+
+### `POST /api/v1/messaging/setup`
+Habilita la mensajería instantánea del usuario autenticado: genera un
+identificador público estilo **nanoid** (12 caracteres, `A-Za-z0-9_-`), lo
+guarda en `cat_usuarios.usu_id_public` (`procUsersProc`,
+`tipoRegistro = 3`) y lo devuelve. Este id será la identidad pública
+persistente del usuario para el chat 1:1.
+
+```bash
+curl -X POST -H "Authorization: Bearer <access_token>" \
+  https://cws.sodastream.fun/api/v1/messaging/setup
+```
+**201**
+```json
+{"success":true,"error":0,"msg":"Mensajeria instantanea habilitada",
+ "data":{"usu_id_public":"VN2qxVIsbz5t","ws_path":"/ws/v1"}}
+```
+- `401` sin Bearer válido.
+- `500` si falla la BD/RNG.
+- Cada llamada **regenera** el id: el cliente debe guardarlo y no repetir la
+  llamada salvo que quiera rotarlo.
+- `usu_id` es interno y **no** se devuelve.
+
+### `GET /api/v1/messaging/users/:public_id`
+Busca un usuario por su id público de mensajería (nanoid de 12). Requiere
+**Bearer**. Devuelve solo datos públicos; **nunca** `usu_id`.
+
+```bash
+curl -H "Authorization: Bearer <access_token>" \
+  https://cws.sodastream.fun/api/v1/messaging/users/JV4y-3-Bkdia
+```
+**200**
+```json
+{"success":true,"error":0,"msg":"Usuario encontrado",
+ "data":{"usu_id_public":"JV4y-3-Bkdia","usu_nombre":"KDF2"}}
+```
+- `400` id con formato inválido (deben ser 12 caracteres `A-Za-z0-9_-`).
+- `404` no existe.
+- `401` sin Bearer válido.
+- `500` error de BD.
+
+> Ejecuta `procUsersCons` con `tipoConsulta = 3` (`@usu_id_public`).
 
 ---
 

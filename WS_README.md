@@ -205,6 +205,11 @@ Al conectar, el servidor publica:
 - **`usu_id` es interno y nunca se emite** (ni en `welcome`, ni en `identity`,
   ni en mensajes). Solo se usa server-side (p. ej. sala `user:<usu_id>`).
 
+**Id público persistente (chat 1:1):** `cat_usuarios.usu_id_public`, generado
+con `POST /api/v1/messaging/setup` (Bearer, ver `docs/endpoints.md`). Es
+nanoid de 12 y no cambia entre conexiones; hoy los mensajes de sala todavía
+llevan el `public_id` de la conexión (`socket_id`).
+
 La identidad va en `welcome` y se puede pedir con `whoami`.
 
 ---
