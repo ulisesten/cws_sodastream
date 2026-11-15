@@ -14,6 +14,7 @@ Guía para implementar el chat uno a uno desde el cliente (Android) contra
 | Historial (`GET /conversations/.../messages`) | ✅ implementado en código |
 | Envío (`POST /conversations/.../messages`) + push `dm` | ✅ implementado en código |
 | Marcar leído (`POST /conversations/.../read`) | ✅ implementado en código |
+| Lista de conversaciones (inbox) | ❌ no hay endpoint; usar `GET /messaging/users` + caché local (ver abajo) |
 | Tabla `dbo.opr_chat_mensajes` | ✅ aplicada |
 | SP `procChatMensajesCons` / `procChatMensajesProc` | 📄 aplicar desde `db_sodastream/` |
 | SP `procUsersCons` rama 4 (lista) | 📄 aplicar desde `db_sodastream/` |
@@ -48,6 +49,54 @@ los SP en la base de datos. El contrato (paths, JSON, códigos) no cambia.
 9. Paginar               → before=<msg_id más viejo cargado>
 10. Responder            → reply_to=<msg_id citado>
 ```
+
+## Obtener las conversaciones
+
+**No existe** un endpoint de "lista de conversaciones" (inbox con último
+mensaje y no leídos). El cliente la construye así:
+
+### Lista de conversaciones (hoy)
+
+1. `GET /api/v1/messaging/users` → usuarios con chat habilitado (ya excluye
+   al propio). Cada item: `{usu_id_public, usu_nombre}`.
+2. Esa es la lista de conversaciones posibles. Ordénala/filtra localmente.
+3. Al tocar un contacto:
+   `GET /api/v1/messaging/conversations/{usu_id_public}/messages`.
+4. El título del chat es `usu_nombre`.
+
+Limitaciones actuales:
+
+- La lista no viene ordenada por actividad ni trae último mensaje/no leídos.
+- **No** hagas N llamadas a `/messages` para pintar la lista.
+
+### Último mensaje y no leídos (caché local)
+
+Mantén una caché por `usu_id_public`:
+
+- Al cargar historial: guarda `last_msg_id`, `last_texto`, `last_fecha` y
+  `no_leidos`.
+- Al enviar (201): actualiza `last_*`; `no_leidos` no cambia.
+- Al recibir `dm` de un contacto: actualiza `last_*` y `no_leidos++`, salvo
+  que el chat de ese contacto esté abierto/visible.
+- Al marcar leído (`read`): `no_leidos = 0`.
+- Persiste la caché y ordena el inbox por `last_msg_id`/`last_fecha`.
+
+### Endpoint de inbox (no disponible)
+
+Contrato propuesto para el futuro (hoy devuelve `404`, **no lo uses**):
+
+```http
+GET /api/v1/messaging/conversations
+```
+```json
+{"success":true,"error":0,"msg":"Conversaciones obtenidas","data":[
+  {"usu_id_public":"AB12cd34EF56","usu_nombre":"KDF2",
+   "last_msg_id":124,"last_texto":"hola","last_fecha":"2026-11-13T18:05:00",
+   "no_leidos":2,"es_mio":false}
+]}
+```
+
+Cuando exista, reemplazará a la lista de usuarios + caché local.
 
 ## Endpoints (Bearer)
 
@@ -118,11 +167,11 @@ GET /api/v1/messaging/conversations/{usu_id_public}/messages?before={msg_id}&lim
  "data":{
    "messages":[
      {"msg_id":124,"from":"AB12cd34EF56","es_mio":false,
-      "texto":"hola","fecha":"2026-11-13T18:05:00",
-      "reply_to":null,"leido":false},
+      "tipo":"text","sticker_id":null,"texto":"hola",
+      "fecha":"2026-11-13T18:05:00","reply_to":null,"leido":false},
      {"msg_id":123,"from":"VN2qxVIsbz5t","es_mio":true,
-      "texto":"qué tal","fecha":"2026-11-13T18:04:00",
-      "reply_to":null,"leido":true}
+      "tipo":"text","sticker_id":null,"texto":"qué tal",
+      "fecha":"2026-11-13T18:04:00","reply_to":null,"leido":true}
    ],
    "next_before":123
  }
@@ -144,15 +193,20 @@ Content-Type: application/json
 {"texto":"hola","reply_to":123}
 ```
 
-- `texto`: obligatorio, no vacío. Límite 4096 bytes UTF-8 (~4000 chars).
+- En la BD, `msg_tipo` es `TINYINT` (`0`=texto, `1`=sticker); la API usa
+  `"tipo":"text"|"sticker"` y el servidor lo mapea.
+- Texto: `{"texto":"hola","reply_to":123}`; `texto` no vacío, ≤4096 bytes UTF-8.
+- Sticker: `{"tipo":"sticker","sticker_id":"<64 hex>","reply_to":null}` (sin
+  `texto`); el sticker debe estar registrado (`POST /stickers` antes). Ver
+  `chat_stickers.md`.
 - `reply_to`: opcional; debe ser un `msg_id` de la misma conversación.
 
 **201**
 ```json
 {"success":true,"error":0,"msg":"Mensaje enviado",
  "data":{"msg_id":125,"from":"VN2qxVIsbz5t","es_mio":true,
-         "texto":"hola","fecha":"2026-11-13T18:06:00",
-         "reply_to":123,"leido":false}}
+         "tipo":"text","sticker_id":null,"texto":"hola",
+         "fecha":"2026-11-13T18:06:00","reply_to":123,"leido":false}}
 ```
 
 - `400` texto/reply inválido · `404` contacto no existe · `401` sin token.
@@ -184,7 +238,8 @@ Marca como leídos los mensajes del contacto con `msg_id <= hasta`.
 ```
 dm
 {"msg_id":126,"from":"AB12cd34EF56","from_nombre":"KDF2",
- "texto":"respuesta","fecha":"2026-11-13T18:07:00","reply_to":125}
+ "tipo":"text","sticker_id":null,"texto":"respuesta",
+ "fecha":"2026-11-13T18:07:00","reply_to":125}
 ```
 
 - Llega al receptor y a tus otros dispositivos (si enviaste desde uno).
@@ -207,8 +262,9 @@ dm
 8. **Refresh/reconexión**: refrescar el token no afecta al WS abierto; al
    reconectar usa el access más reciente (ver `WS_README.md`).
 9. **Logout**: cierra el WS y borra el `usu_id_public` local.
-10. **Contactos**: usa `GET /messaging/users` para traer la lista (ya excluye
-    al propio) y filtra localmente; no se necesita tabla de contactos.
+10. **Contactos/inbox**: usa `GET /messaging/users` para la lista (ya excluye
+    al propio) y mantén una caché local de último mensaje/no leídos; todavía
+    no hay endpoint de inbox.
 
 ## Android — checklist
 
@@ -216,6 +272,7 @@ dm
 - [ ] `setup` una sola vez (si falta el id).
 - [ ] Conectar WS con Bearer y el cliente GOST; manejar `dm`.
 - [ ] Listar contactos (`GET /messaging/users`) y filtrar localmente.
+- [ ] Inbox: lista de contactos + caché local (`last_*`, `no_leidos`).
 - [ ] Historial al abrir el chat (`limit=30`, luego paginar).
 - [ ] Render con `msg.from == mi usu_id_public` (o `es_mio`).
 - [ ] Enviar con POST; UI optimista con id temporal; reemplazar por `msg_id`.

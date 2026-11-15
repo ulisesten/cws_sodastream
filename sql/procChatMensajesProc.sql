@@ -21,7 +21,9 @@ CREATE OR ALTER PROCEDURE [dbo].[procChatMensajesProc]
     @msg              VARCHAR(150),
     @error_state      INT,
     @error_sev        INT,
-    @success          VARCHAR(5)
+    @success          VARCHAR(5),
+    @tipo             TINYINT = 0,   -- 0 = texto, 1 = sticker
+    @sticker_id       CHAR(64) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -49,10 +51,46 @@ BEGIN
             RETURN;
         END
 
-        IF @msg_texto IS NULL OR LEN(LTRIM(RTRIM(@msg_texto))) = 0
+        DECLARE @msg_tipo INT = 0;
+        DECLARE @msg_sticker CHAR(64) = NULL;
+        DECLARE @texto NVARCHAR(4000) = @msg_texto;
+
+        IF @tipo IS NULL SET @tipo = 0;
+
+        IF @tipo NOT IN (0, 1)
         BEGIN
-            SELECT success = 'false', msg = 'El mensaje esta vacio', error = 1;
+            SELECT success = 'false', msg = 'Tipo de mensaje invalido', error = 1;
             RETURN;
+        END
+
+        IF @tipo = 1
+        BEGIN
+            IF @sticker_id IS NULL
+               OR LEN(LTRIM(RTRIM(@sticker_id))) <> 64
+               OR @sticker_id LIKE '%[^0-9a-f]%'
+            BEGIN
+                SELECT success = 'false', msg = 'Sticker id invalido', error = 1;
+                RETURN;
+            END
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.opr_chat_stickers
+                            WHERE sti_hash = @sticker_id)
+            BEGIN
+                SELECT success = 'false', msg = 'Sticker no registrado', error = 1;
+                RETURN;
+            END
+
+            SET @msg_tipo = 1;
+            SET @msg_sticker = @sticker_id;
+            SET @texto = '';
+        END
+        ELSE
+        BEGIN
+            IF @msg_texto IS NULL OR LEN(LTRIM(RTRIM(@msg_texto))) = 0
+            BEGIN
+                SELECT success = 'false', msg = 'El mensaje esta vacio', error = 1;
+                RETURN;
+            END
         END
 
         -- Ambos deben tener id público (mensajería configurada).
@@ -91,13 +129,15 @@ BEGIN
                 msg_usu_receptor,
                 msg_tipo,
                 msg_texto,
+                msg_sticker_id,
                 msg_id_respuesta,
                 msg_fecha
             ) VALUES (
                 @msg_usu_emisor,
                 @msg_usu_receptor,
-                0,
-                @msg_texto,
+                @msg_tipo,
+                @texto,
+                @msg_sticker,
                 @msg_id_respuesta,
                 @fecha
             );
@@ -108,10 +148,20 @@ BEGIN
                    msg_id = @msg_id,
                    fecha = @fecha,
                    msg_id_respuesta = @msg_id_respuesta,
+                   tipo = @tipo,
+                   sticker_id = @msg_sticker,
                    emisor_public = (SELECT usu_id_public FROM dbo.cat_usuarios
                                      WHERE usu_id = @msg_usu_emisor),
                    receptor_public = (SELECT usu_id_public FROM dbo.cat_usuarios
-                                       WHERE usu_id = @msg_usu_receptor);
+                                       WHERE usu_id = @msg_usu_receptor),
+                   sticker_mime = (SELECT sti_mime FROM dbo.opr_chat_stickers
+                                    WHERE sti_hash = @msg_sticker),
+                   sticker_width = (SELECT sti_width FROM dbo.opr_chat_stickers
+                                     WHERE sti_hash = @msg_sticker),
+                   sticker_height = (SELECT sti_height FROM dbo.opr_chat_stickers
+                                      WHERE sti_hash = @msg_sticker),
+                   sticker_animated = (SELECT sti_animated FROM dbo.opr_chat_stickers
+                                        WHERE sti_hash = @msg_sticker);
         END TRY
         BEGIN CATCH
             SELECT success = 'false', msg = ERROR_MESSAGE(), error = 1,

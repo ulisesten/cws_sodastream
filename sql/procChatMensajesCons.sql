@@ -47,6 +47,11 @@ BEGIN
             e.usu_id_public AS emisor_public,
             m.msg_tipo,
             m.msg_texto,
+            m.msg_sticker_id,
+            s.sti_mime AS sticker_mime,
+            s.sti_width AS sticker_width,
+            s.sti_height AS sticker_height,
+            s.sti_animated AS sticker_animated,
             m.msg_fecha,
             m.msg_leido,
             m.msg_fecha_lectura,
@@ -54,6 +59,8 @@ BEGIN
         FROM dbo.opr_chat_mensajes m
         LEFT JOIN dbo.cat_usuarios e
                ON e.usu_id = m.msg_usu_emisor
+        LEFT JOIN dbo.opr_chat_stickers s
+               ON s.sti_hash = m.msg_sticker_id
         WHERE m.msg_usu_menor = @menor
           AND m.msg_usu_mayor = @mayor
           AND (@msg_before IS NULL OR m.msg_id < @msg_before)

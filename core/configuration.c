@@ -113,6 +113,8 @@ const char* cfg_getenv(const char* key) {
             return env_get("COOKIE_DOMAIN");
         case 0x4d74448eu: /* API_NAS */
             return env_get("API_NAS");
+        case 0x0923b8fdu: /* STICKERS_DIR */
+            return env_get("STICKERS_DIR");
         default:
             return env_get(key);
     }

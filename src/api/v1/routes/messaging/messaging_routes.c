@@ -19,12 +19,19 @@
 
 #include "messaging_routes.h"
 
+#include <ctype.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <unistd.h>
+
+#include <gost/gost.h>
 
 #include "authorization_mobile.h"
+#include "configuration.h"
 #include "jwt.h"
 #include "ws_api/v1/ws_v1.h"
 #include "../users/domain/users_domain.h"
@@ -37,6 +44,8 @@
 #define WS_MAX_TEXT_BYTES 4096
 #define CHAT_DEFAULT_LIMIT 30
 #define CHAT_MAX_LIMIT     100
+#define STICKER_MAX_BYTES  1048576
+#define STICKER_MAX_IDS    200
 
 /* ------------------------------------------------------------------ */
 /* helpers de respuesta / parámetros                                   */
@@ -131,6 +140,162 @@ static int valid_public_id(const char* s) {
         return 0;
     }
     return 1;
+}
+
+/* Copia NUL-terminada de un header. Liberar con free. */
+static char* header_dup(const cws_request_t* req, const char* name) {
+    if (!req || !name) return NULL;
+    size_t nlen = strlen(name);
+    for (size_t i = 0; i < req->headers_count; i++) {
+        const cws_header_t* h = &req->headers[i];
+        if (h->name_len == nlen &&
+            strncasecmp(h->name, name, nlen) == 0) {
+            char* out = (char*)malloc(h->value_len + 1);
+            if (!out) return NULL;
+            memcpy(out, h->value ? h->value : "", h->value_len);
+            out[h->value_len] = '\0';
+            return out;
+        }
+    }
+    return NULL;
+}
+
+/* Sticker id: 64 chars hex (A-F se normaliza a minúsculas). */
+static int valid_sticker_id(const char* s) {
+    if (!s || strlen(s) != 64) return 0;
+    for (const char* p = s; *p; p++) {
+        if (!((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') ||
+              (*p >= 'A' && *p <= 'F')))
+            return 0;
+    }
+    return 1;
+}
+
+static void lowercase_inplace(char* s) {
+    for (; s && *s; s++)
+        if (*s >= 'A' && *s <= 'Z') *s = (char)(*s - 'A' + 'a');
+}
+
+static void hex_encode32(const uint8_t* d, char out[65]) {
+    static const char h[] = "0123456789abcdef";
+    for (int i = 0; i < 32; i++) {
+        out[i * 2]     = h[d[i] >> 4];
+        out[i * 2 + 1] = h[d[i] & 0x0f];
+    }
+    out[64] = '\0';
+}
+
+static uint32_t le32(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+/* Valida WebP y extrae dimensiones/animación. 0 = válido. */
+static int webp_info(const uint8_t* d, size_t n, int* w, int* h, int* anim) {
+    if (!d || n < 30) return -1;
+    if (memcmp(d, "RIFF", 4) != 0 || memcmp(d + 8, "WEBP", 4) != 0)
+        return -1;
+    if ((uint64_t)le32(d + 4) + 8 > n) return -1;
+
+    const uint8_t* c = d + 12;
+    size_t left = n - 12;
+    *anim = 0;
+
+    if (left >= 18 && memcmp(c, "VP8X", 4) == 0) {
+        uint32_t sz = le32(c + 4);
+        if (sz < 10 || left < 8 + (size_t)sz) return -1;
+        const uint8_t* p = c + 8;
+        if (p[0] & 0x02) *anim = 1;
+        *w = 1 + (p[4] | (p[5] << 8) | (p[6] << 16));
+        *h = 1 + (p[7] | (p[8] << 8) | (p[9] << 16));
+        return 0;
+    }
+    if (left >= 18 && memcmp(c, "VP8 ", 4) == 0) {
+        uint32_t sz = le32(c + 4);
+        if (sz < 10 || left < 8 + (size_t)sz) return -1;
+        const uint8_t* p = c + 8;
+        if (p[3] != 0x9d || p[4] != 0x01 || p[5] != 0x2a) return -1;
+        *w = (p[6] | (p[7] << 8)) & 0x3fff;
+        *h = (p[8] | (p[9] << 8)) & 0x3fff;
+        return 0;
+    }
+    if (left >= 13 && memcmp(c, "VP8L", 4) == 0) {
+        uint32_t sz = le32(c + 4);
+        if (sz < 5 || left < 8 + (size_t)sz) return -1;
+        const uint8_t* p = c + 8;
+        if (p[0] != 0x2f) return -1;
+        uint32_t bits = (uint32_t)p[1] | ((uint32_t)p[2] << 8) |
+                        ((uint32_t)p[3] << 16) | ((uint32_t)p[4] << 24);
+        *w = (int)(bits & 0x3fff) + 1;
+        *h = (int)((bits >> 14) & 0x3fff) + 1;
+        return 0;
+    }
+    return -1;
+}
+
+/* Ruta STICKERS_DIR/<id>.webp (id ya validado). */
+static int sticker_path(const char* id, char* out, size_t cap) {
+    const char* dir = messaging_domain_stickers_dir();
+    int n = snprintf(out, cap, "%s/%s.webp", dir, id);
+    return n > 0 && (size_t)n < cap;
+}
+
+static void free_string_array(char** arr, size_t n) {
+    for (size_t i = 0; i < n; i++) free(arr[i]);
+    free(arr);
+}
+
+/* Extrae un array de strings JSON: {"name":["a","b"]}. 0 = ok. */
+static int json_get_string_array(const char* json, const char* name,
+                                 char*** out, size_t* nout, size_t max) {
+    *out = NULL;
+    *nout = 0;
+    if (!json || !name) return 0;
+
+    char key[128];
+    int kn = snprintf(key, sizeof(key), "\"%s\"", name);
+    if (kn < 0 || (size_t)kn >= sizeof(key)) return -1;
+
+    const char* p = strstr(json, key);
+    if (!p) return 0;
+    p += (size_t)kn;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p != ':') return -1;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p != '[') return -1;
+    p++;
+
+    char** arr = NULL;
+    size_t n = 0;
+    for (;;) {
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' ||
+               *p == ',')
+            p++;
+        if (*p == ']') { p++; break; }
+        if (*p != '"') { free_string_array(arr, n); return -1; }
+        p++;
+        const char* start = p;
+        while (*p && *p != '"') {
+            if (*p == '\\') { free_string_array(arr, n); return -1; }
+            p++;
+        }
+        if (*p != '"') { free_string_array(arr, n); return -1; }
+        size_t len = (size_t)(p - start);
+        if (n >= max) { free_string_array(arr, n); return -1; }
+        char** na = (char**)realloc(arr, (n + 1) * sizeof(char*));
+        if (!na) { free_string_array(arr, n); return -1; }
+        arr = na;
+        arr[n] = (char*)malloc(len + 1);
+        if (!arr[n]) { free_string_array(arr, n); return -1; }
+        memcpy(arr[n], start, len);
+        arr[n][len] = '\0';
+        n++;
+        p++;
+    }
+    *out = arr;
+    *nout = n;
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -275,20 +440,44 @@ static int append_history_msg(strbuf_t* b, const sql_result_t* out, size_t row,
     int es_mio = row_i64(out, row, "msg_usu_emisor", 0) == self;
     const char* from = row_str(out, row, "emisor_public");
     const char* texto = row_str(out, row, "msg_texto");
-    char fecha[32], rbuf[32];
+    const char* sid = row_str(out, row, "msg_sticker_id");
+    const char* smime = row_str(out, row, "sticker_mime");
+    int is_sticker = row_i64(out, row, "msg_tipo", 0) == 1 && sid && *sid;
+    int sw = (int)row_i64(out, row, "sticker_width", 0);
+    int sh = (int)row_i64(out, row, "sticker_height", 0);
+    int sanim = row_bool(out, row, "sticker_animated");
+
+    char fecha[32], rbuf[32], sid_field[96], sticker_json[640];
     row_datetime(out, row, "msg_fecha", fecha, sizeof(fecha));
     reply_buf(rbuf, sizeof(rbuf), reply);
+
+    sticker_json[0] = '\0';
+    if (is_sticker) {
+        snprintf(sid_field, sizeof(sid_field), "\"%s\"", sid);
+        snprintf(sticker_json, sizeof(sticker_json),
+                 ",\"sticker\":{\"sticker_id\":\"%s\",\"mime\":\"%s\","
+                 "\"width\":%d,\"height\":%d,\"animated\":%s,"
+                 "\"url\":\"/api/v1/messaging/stickers/%s/file\"}",
+                 sid, smime ? smime : "image/webp", sw, sh,
+                 sanim ? "true" : "false", sid);
+    } else {
+        snprintf(sid_field, sizeof(sid_field), "null");
+    }
 
     char* jfrom = json_escape_dup(from ? from : "");
     char* jtexto = json_escape_dup(texto ? texto : "");
     int ok = jfrom && jtexto &&
              sb_printf(b,
                        "%s{\"msg_id\":%lld,\"from\":%s,\"es_mio\":%s,"
-                       "\"texto\":%s,\"fecha\":\"%s\",\"reply_to\":%s,"
-                       "\"leido\":%s}",
+                       "\"tipo\":\"%s\",\"sticker_id\":%s,\"texto\":%s,"
+                       "\"fecha\":\"%s\",\"reply_to\":%s,\"leido\":%s",
                        first ? "" : ",", (long long)msg_id, jfrom,
-                       es_mio ? "true" : "false", jtexto, fecha, rbuf,
+                       es_mio ? "true" : "false",
+                       is_sticker ? "sticker" : "text", sid_field, jtexto,
+                       fecha, rbuf,
                        row_bool(out, row, "msg_leido") ? "true" : "false");
+    if (ok && sticker_json[0]) ok = sb_puts(b, sticker_json);
+    if (ok) ok = sb_puts(b, "}");
     free(jfrom);
     free(jtexto);
     return ok;
@@ -296,18 +485,41 @@ static int append_history_msg(strbuf_t* b, const sql_result_t* out, size_t row,
 
 /* Objeto `dm` para el push WebSocket (sin es_mio: el cliente compara from). */
 static int build_ws_dm(strbuf_t* b, int64_t msg_id, const char* from,
-                       const char* from_nombre, const char* texto,
+                       const char* from_nombre, const char* tipo,
+                       const char* sticker_id, const char* mime,
+                       int sw, int sh, int sanim, const char* texto,
                        const char* fecha, int64_t reply) {
-    char rbuf[32];
+    char rbuf[32], sid_field[96], sticker_json[640];
     reply_buf(rbuf, sizeof(rbuf), reply);
+
+    int is_sticker = tipo && strcmp(tipo, "sticker") == 0 &&
+                     sticker_id && *sticker_id;
+    sticker_json[0] = '\0';
+    if (is_sticker) {
+        snprintf(sid_field, sizeof(sid_field), "\"%s\"", sticker_id);
+        snprintf(sticker_json, sizeof(sticker_json),
+                 ",\"sticker\":{\"sticker_id\":\"%s\",\"mime\":\"%s\","
+                 "\"width\":%d,\"height\":%d,\"animated\":%s,"
+                 "\"url\":\"/api/v1/messaging/stickers/%s/file\"}",
+                 sticker_id, mime ? mime : "image/webp", sw, sh,
+                 sanim ? "true" : "false", sticker_id);
+    } else {
+        snprintf(sid_field, sizeof(sid_field), "null");
+    }
+
     char* jfrom = json_escape_dup(from ? from : "");
     char* jnombre = json_escape_dup(from_nombre ? from_nombre : "");
     char* jtexto = json_escape_dup(texto ? texto : "");
     int ok = jfrom && jnombre && jtexto &&
              sb_printf(b,
                        "{\"msg_id\":%lld,\"from\":%s,\"from_nombre\":%s,"
-                       "\"texto\":%s,\"fecha\":\"%s\",\"reply_to\":%s}",
-                       (long long)msg_id, jfrom, jnombre, jtexto, fecha, rbuf);
+                       "\"tipo\":\"%s\",\"sticker_id\":%s,\"texto\":%s,"
+                       "\"fecha\":\"%s\",\"reply_to\":%s",
+                       (long long)msg_id, jfrom, jnombre,
+                       is_sticker ? "sticker" : "text", sid_field, jtexto,
+                       fecha, rbuf);
+    if (ok && sticker_json[0]) ok = sb_puts(b, sticker_json);
+    if (ok) ok = sb_puts(b, "}");
     free(jfrom);
     free(jnombre);
     free(jtexto);
@@ -326,6 +538,58 @@ static int64_t resolve_contact(const char* public_id) {
     int64_t id = row_i64(dao, 0, "usu_id", 0);
     sql_result_free(dao);
     return id;
+}
+
+/* ------------------------------------------------------------------ */
+/* helpers de stickers                                                 */
+/* ------------------------------------------------------------------ */
+
+/* CSV de ids válidos, normalizados y sin duplicados.
+ * *bad: 0 ok, 1 id inválido, 2 sin memoria. */
+static char* build_ids_csv(char** ids, size_t n, int* bad) {
+    *bad = 0;
+    if (n == 0) {
+        char* empty = (char*)malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
+    char** norm = (char**)calloc(n, sizeof(char*));
+    if (!norm) { *bad = 2; return NULL; }
+    size_t m = 0;
+    for (size_t i = 0; i < n && *bad == 0; i++) {
+        if (!valid_sticker_id(ids[i])) { *bad = 1; break; }
+        char* c = strdup(ids[i]);
+        if (!c) { *bad = 2; break; }
+        lowercase_inplace(c);
+        int dup = 0;
+        for (size_t k = 0; k < m; k++)
+            if (strcmp(norm[k], c) == 0) { dup = 1; break; }
+        if (dup) { free(c); continue; }
+        norm[m++] = c;
+    }
+    char* csv = NULL;
+    if (*bad == 0) {
+        csv = (char*)malloc(m * 65 + 1);
+        if (!csv) *bad = 2;
+        else {
+            size_t off = 0;
+            for (size_t i = 0; i < m; i++) {
+                if (i) csv[off++] = ',';
+                memcpy(csv + off, norm[i], 64);
+                off += 64;
+            }
+            csv[off] = '\0';
+        }
+    }
+    for (size_t i = 0; i < m; i++) free(norm[i]);
+    free(norm);
+    return csv;
+}
+
+static int append_json_id(strbuf_t* b, const char* id, int* first) {
+    if (!*first) sb_puts(b, ",");
+    *first = 0;
+    return sb_printf(b, "\"%s\"", id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -578,33 +842,113 @@ static CWS_HANDLER(messaging_send_handler) {
     }
 
     char* texto = NULL;
+    char* tipo = NULL;
+    char* sticker_raw = NULL;
     int64_t reply_to = 0, tmp = 0;
     if (body) {
         jwt_json_get_string(body, "texto", &texto);
+        jwt_json_get_string(body, "tipo", &tipo);
+        jwt_json_get_string(body, "sticker_id", &sticker_raw);
         if (jwt_json_get_int(body, "reply_to", &tmp) == 0) reply_to = tmp;
     }
     free(body);
 
-    if (!texto || !*texto) {
+    if (!tipo || !*tipo) {
+        free(tipo);
+        tipo = strdup("text");
+    }
+    if (!tipo) {
         free(texto);
-        send_error_msg(res, 400, "El mensaje esta vacio");
+        free(sticker_raw);
+        cws_response_send_error(res, 500);
         return;
     }
-    if (strlen(texto) > WS_MAX_TEXT_BYTES) {
+    lowercase_inplace(tipo);
+
+    int is_sticker = strcmp(tipo, "sticker") == 0;
+    if (!is_sticker && strcmp(tipo, "text") != 0) {
         free(texto);
-        send_error_msg(res, 400, "Mensaje demasiado largo");
+        free(tipo);
+        free(sticker_raw);
+        send_error_msg(res, 400, "Tipo de mensaje invalido");
         return;
     }
     if (reply_to < 0) {
         free(texto);
+        free(tipo);
+        free(sticker_raw);
         send_error_msg(res, 400, "reply_to invalido");
         return;
     }
 
-    sql_result_t* out = messaging_domain_insert(u->usu_id, otro, texto,
-                                                reply_to);
+    char sid[65] = {0};
+    if (is_sticker) {
+        if (!sticker_raw || !valid_sticker_id(sticker_raw)) {
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            send_error_msg(res, 400, "Sticker id invalido");
+            return;
+        }
+        snprintf(sid, sizeof(sid), "%s", sticker_raw);
+        lowercase_inplace(sid);
+        if (texto && *texto) {
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            send_error_msg(res, 400, "texto no permitido en sticker");
+            return;
+        }
+        sql_result_t* st = messaging_domain_sticker_get(sid);
+        if (!st) {
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            cws_response_send_error(res, 500);
+            return;
+        }
+        if (st->nrows == 0) {
+            sql_result_free(st);
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            send_error_msg(res, 404, "Sticker no registrado");
+            return;
+        }
+        sql_result_free(st);
+        free(texto);
+        texto = strdup("");
+        if (!texto) {
+            free(tipo);
+            free(sticker_raw);
+            cws_response_send_error(res, 500);
+            return;
+        }
+    } else {
+        if (!texto || !*texto) {
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            send_error_msg(res, 400, "El mensaje esta vacio");
+            return;
+        }
+        if (strlen(texto) > WS_MAX_TEXT_BYTES) {
+            free(texto);
+            free(tipo);
+            free(sticker_raw);
+            send_error_msg(res, 400, "Mensaje demasiado largo");
+            return;
+        }
+    }
+    free(sticker_raw);
+
+    sql_result_t* out = messaging_domain_insert(u->usu_id, otro,
+                                                is_sticker ? 1 : 0,
+                                                is_sticker ? sid : NULL,
+                                                texto, reply_to);
     if (!out) {
         free(texto);
+        free(tipo);
         cws_response_send_error(res, 500);
         return;
     }
@@ -615,19 +959,26 @@ static CWS_HANDLER(messaging_send_handler) {
         send_error_msg(res, 400, msg ? msg : "No se pudo enviar el mensaje");
         sql_result_free(out);
         free(texto);
+        free(tipo);
         return;
     }
 
     int64_t msg_id = row_i64(out, 0, "msg_id", 0);
     int64_t reply = row_i64(out, 0, "msg_id_respuesta", 0);
     const char* from = row_str(out, 0, "emisor_public");
+    const char* smime = row_str(out, 0, "sticker_mime");
+    int sw = (int)row_i64(out, 0, "sticker_width", 0);
+    int sh = (int)row_i64(out, 0, "sticker_height", 0);
+    int sanim = row_bool(out, 0, "sticker_animated");
     char fecha[32];
     row_datetime(out, 0, "fecha", fecha, sizeof(fecha));
 
     /* Push WS `dm` al receptor y a los demás dispositivos del emisor. */
     {
         strbuf_t w = {0};
-        if (build_ws_dm(&w, msg_id, from, u->usu_nombre, texto, fecha, reply)) {
+        if (build_ws_dm(&w, msg_id, from, u->usu_nombre, tipo,
+                        is_sticker ? sid : NULL, smime, sw, sh, sanim,
+                        texto, fecha, reply)) {
             ws_v1_emit_to_user(otro, "dm", w.data, w.len);
             ws_v1_emit_to_user(u->usu_id, "dm", w.data, w.len);
         }
@@ -635,8 +986,21 @@ static CWS_HANDLER(messaging_send_handler) {
     }
 
     /* Respuesta HTTP con el mensaje creado. */
-    char rbuf[32];
+    char rbuf[32], sid_field[96], sticker_json[640];
     reply_buf(rbuf, sizeof(rbuf), reply);
+    sticker_json[0] = '\0';
+    if (is_sticker) {
+        snprintf(sid_field, sizeof(sid_field), "\"%s\"", sid);
+        snprintf(sticker_json, sizeof(sticker_json),
+                 ",\"sticker\":{\"sticker_id\":\"%s\",\"mime\":\"%s\","
+                 "\"width\":%d,\"height\":%d,\"animated\":%s,"
+                 "\"url\":\"/api/v1/messaging/stickers/%s/file\"}",
+                 sid, smime ? smime : "image/webp", sw, sh,
+                 sanim ? "true" : "false", sid);
+    } else {
+        snprintf(sid_field, sizeof(sid_field), "null");
+    }
+
     char* jfrom = json_escape_dup(from ? from : "");
     char* jtexto = json_escape_dup(texto);
     strbuf_t b = {0};
@@ -645,12 +1009,18 @@ static CWS_HANDLER(messaging_send_handler) {
                         "{\"success\":true,\"error\":0,"
                         "\"msg\":\"Mensaje enviado\","
                         "\"data\":{\"msg_id\":%lld,\"from\":%s,"
-                        "\"es_mio\":true,\"texto\":%s,\"fecha\":\"%s\","
-                        "\"reply_to\":%s,\"leido\":false}}",
-                        (long long)msg_id, jfrom, jtexto, fecha, rbuf);
+                        "\"es_mio\":true,\"tipo\":\"%s\","
+                        "\"sticker_id\":%s,\"texto\":%s,\"fecha\":\"%s\","
+                        "\"reply_to\":%s,\"leido\":false",
+                        (long long)msg_id, jfrom,
+                        is_sticker ? "sticker" : "text", sid_field, jtexto,
+                        fecha, rbuf);
+    if (okb && sticker_json[0]) okb = sb_puts(&b, sticker_json);
+    if (okb) okb = sb_puts(&b, "}}");
     free(jfrom);
     free(jtexto);
     free(texto);
+    free(tipo);
     sql_result_free(out);
 
     if (!okb) {
@@ -726,6 +1096,405 @@ static CWS_HANDLER(messaging_read_handler) {
 }
 
 /* ------------------------------------------------------------------ */
+/* POST /stickers                                                     */
+/* ------------------------------------------------------------------ */
+
+static CWS_HANDLER(messaging_sticker_upload_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { cws_response_send_error(res, 401); return; }
+
+    char* ct = header_dup(req, "content-type");
+    int is_webp = 0;
+    if (ct) {
+        const char* p = ct;
+        while (*p == ' ' || *p == '\t') p++;
+        if (strncasecmp(p, "image/webp", 10) == 0) {
+            char c = p[10];
+            if (c == '\0' || c == ';' || c == ' ' || c == '\t') is_webp = 1;
+        }
+    }
+    free(ct);
+    if (!is_webp) {
+        send_error_msg(res, 415, "Mime no soportado (image/webp)");
+        return;
+    }
+
+    if (!req->body || req->body_len == 0) {
+        send_error_msg(res, 400, "Sticker vacio");
+        return;
+    }
+    if (req->body_len > STICKER_MAX_BYTES) {
+        send_error_msg(res, 413, "Sticker demasiado grande");
+        return;
+    }
+
+    const uint8_t* data = (const uint8_t*)req->body;
+    int w = 0, h = 0, anim = 0;
+    if (webp_info(data, req->body_len, &w, &h, &anim) != 0) {
+        send_error_msg(res, 400, "WebP invalido");
+        return;
+    }
+    if (w != 512 || h != 512) {
+        send_error_msg(res, 400, "Dimensiones invalidas (512x512)");
+        return;
+    }
+
+    uint8_t digest[32];
+    if (gost_hash(data, req->body_len, GOST_HASH_256, digest) != GOST_OK) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    char id[65];
+    hex_encode32(digest, id);
+
+    char* xid = header_dup(req, "x-sticker-id");
+    if (xid) {
+        lowercase_inplace(xid);
+        int same = strcmp(xid, id) == 0;
+        free(xid);
+        if (!same) {
+            send_error_msg(res, 400, "X-Sticker-Id no coincide");
+            return;
+        }
+    }
+
+    char path[1200];
+    if (!sticker_path(id, path, sizeof(path))) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    int existed = (access(path, F_OK) == 0);
+    if (!existed) {
+        char tmp[1300];
+        snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long)getpid());
+        FILE* f = fopen(tmp, "wb");
+        if (!f) { cws_response_send_error(res, 500); return; }
+        size_t wr = fwrite(data, 1, req->body_len, f);
+        int cl = fclose(f);
+        if (cl != 0 || wr != req->body_len) {
+            unlink(tmp);
+            cws_response_send_error(res, 500);
+            return;
+        }
+        if (rename(tmp, path) != 0) {
+            unlink(tmp);
+            cws_response_send_error(res, 500);
+            return;
+        }
+    }
+
+    sql_result_t* out = messaging_domain_sticker_insert(
+        id, "image/webp", (int64_t)req->body_len, w, h, anim, u->usu_id);
+    if (!out) {
+        if (!existed) unlink(path);
+        cws_response_send_error(res, 500);
+        return;
+    }
+    const char* ok = field_str(out, "success");
+    if (!ok || strcmp(ok, "true") != 0) {
+        const char* msg = field_str(out, "msg");
+        send_error_msg(res, 400,
+                       msg ? msg : "No se pudo registrar el sticker");
+        sql_result_free(out);
+        if (!existed) unlink(path);
+        return;
+    }
+    int64_t exists = row_i64(out, 0, "exists", 0);
+    sql_result_free(out);
+
+    char body[768];
+    int n = snprintf(
+        body, sizeof(body),
+        "{\"success\":true,\"error\":0,\"msg\":\"Sticker registrado\","
+        "\"data\":{\"sticker_id\":\"%s\",\"mime\":\"image/webp\","
+        "\"bytes\":%lld,\"width\":%d,\"height\":%d,\"animated\":%s,"
+        "\"exists\":%s,\"url\":\"/api/v1/messaging/stickers/%s/file\"}}",
+        id, (long long)req->body_len, w, h, anim ? "true" : "false",
+        exists ? "true" : "false", id);
+    if (n < 0 || (size_t)n >= sizeof(body)) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    send_json(res, exists ? 200 : 201, body);
+}
+
+/* ------------------------------------------------------------------ */
+/* GET /stickers/:sticker_id                                          */
+/* ------------------------------------------------------------------ */
+
+static CWS_HANDLER(messaging_sticker_get_handler) {
+    char* raw = param_dup(req, "sticker_id");
+    if (!raw || !valid_sticker_id(raw)) {
+        free(raw);
+        send_error_msg(res, 400, "Sticker id invalido");
+        return;
+    }
+    lowercase_inplace(raw);
+
+    sql_result_t* out = messaging_domain_sticker_get(raw);
+    if (!out) {
+        free(raw);
+        cws_response_send_error(res, 500);
+        return;
+    }
+    if (out->nrows == 0) {
+        sql_result_free(out);
+        free(raw);
+        send_error_msg(res, 404, "Sticker no encontrado");
+        return;
+    }
+
+    const char* mime = row_str(out, 0, "sti_mime");
+    int64_t bytes = row_i64(out, 0, "sti_bytes", 0);
+    int w = (int)row_i64(out, 0, "sti_width", 0);
+    int h = (int)row_i64(out, 0, "sti_height", 0);
+    int anim = row_bool(out, 0, "sti_animated");
+    char mime_json[64];
+    json_escape_to(mime_json, sizeof(mime_json), mime ? mime : "image/webp");
+    sql_result_free(out);
+
+    char body[640];
+    int n = snprintf(
+        body, sizeof(body),
+        "{\"success\":true,\"error\":0,\"msg\":\"Sticker encontrado\","
+        "\"data\":{\"sticker_id\":\"%s\",\"mime\":%s,\"bytes\":%lld,"
+        "\"width\":%d,\"height\":%d,\"animated\":%s,"
+        "\"url\":\"/api/v1/messaging/stickers/%s/file\"}}",
+        raw, mime_json, (long long)bytes, w, h,
+        anim ? "true" : "false", raw);
+    free(raw);
+    if (n < 0 || (size_t)n >= sizeof(body)) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    send_json(res, 200, body);
+}
+
+/* ------------------------------------------------------------------ */
+/* GET /stickers/:sticker_id/file                                     */
+/* ------------------------------------------------------------------ */
+
+static CWS_HANDLER(messaging_sticker_file_handler) {
+    char* raw = param_dup(req, "sticker_id");
+    if (!raw || !valid_sticker_id(raw)) {
+        free(raw);
+        send_error_msg(res, 400, "Sticker id invalido");
+        return;
+    }
+    lowercase_inplace(raw);
+
+    char path[1200];
+    if (!sticker_path(raw, path, sizeof(path))) {
+        free(raw);
+        cws_response_send_error(res, 500);
+        return;
+    }
+
+    char etag[70];
+    snprintf(etag, sizeof(etag), "\"%s\"", raw);
+
+    char* inm = header_dup(req, "if-none-match");
+    if (inm && strcmp(inm, etag) == 0) {
+        free(inm);
+        free(raw);
+        cws_response_status(res, 304);
+        cws_response_header(res, "ETag", "%s", etag);
+        cws_response_send(res);
+        return;
+    }
+    free(inm);
+
+    cws_response_header(res, "Cache-Control",
+                        "private, max-age=31536000, immutable");
+    cws_response_header(res, "ETag", "%s", etag);
+    cws_response_sendfile_ex(res, path, "image/webp", 0);
+    free(raw);
+}
+
+/* ------------------------------------------------------------------ */
+/* POST /stickers/check                                               */
+/* ------------------------------------------------------------------ */
+
+static CWS_HANDLER(messaging_stickers_check_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { cws_response_send_error(res, 401); return; }
+
+    char* body = NULL;
+    if (req->body && req->body_len > 0 && req->body_len <= 65536) {
+        body = (char*)malloc(req->body_len + 1);
+        if (body) {
+            memcpy(body, req->body, req->body_len);
+            body[req->body_len] = '\0';
+        }
+    }
+
+    char* contact = NULL;
+    char** ids = NULL;
+    size_t nids = 0;
+    int parse_err = 0;
+    if (body) {
+        jwt_json_get_string(body, "contact_public_id", &contact);
+        if (json_get_string_array(body, "sticker_ids", &ids, &nids,
+                                  STICKER_MAX_IDS) != 0)
+            parse_err = 1;
+    }
+    free(body);
+    if (parse_err) {
+        free_string_array(ids, nids);
+        free(contact);
+        send_error_msg(res, 400, "sticker_ids invalido");
+        return;
+    }
+
+    int64_t contact_usu = 0;
+    if (contact && *contact) {
+        if (!valid_public_id(contact)) {
+            free_string_array(ids, nids);
+            free(contact);
+            send_error_msg(res, 400, "contact_public_id invalido");
+            return;
+        }
+        contact_usu = resolve_contact(contact);
+        if (contact_usu < 0) {
+            free_string_array(ids, nids);
+            free(contact);
+            cws_response_send_error(res, 500);
+            return;
+        }
+        if (contact_usu == 0) {
+            free_string_array(ids, nids);
+            free(contact);
+            send_error_msg(res, 404, "Usuario no encontrado");
+            return;
+        }
+    }
+    free(contact);
+
+    int bad = 0;
+    char* csv = build_ids_csv(ids, nids, &bad);
+    free_string_array(ids, nids);
+    if (bad) {
+        free(csv);
+        if (bad == 2) cws_response_send_error(res, 500);
+        else send_error_msg(res, 400, "sticker_ids invalido");
+        return;
+    }
+
+    sql_result_t* out = messaging_domain_stickers_check(csv, contact_usu);
+    free(csv);
+    if (!out) { cws_response_send_error(res, 500); return; }
+
+    strbuf_t b = {0};
+    int okb = sb_puts(&b,
+                      "{\"success\":true,\"error\":0,"
+                      "\"msg\":\"Stickers verificados\",\"data\":{");
+    int first = 1;
+    if (okb) okb = sb_puts(&b, "\"registered\":[");
+    for (size_t i = 0; i < out->nrows && okb; i++) {
+        if (row_bool(out, i, "registered"))
+            okb = append_json_id(&b, row_str(out, i, "sti_hash"), &first);
+    }
+    first = 1;
+    if (okb) okb = sb_puts(&b, "],\"missing\":[");
+    for (size_t i = 0; i < out->nrows && okb; i++) {
+        if (!row_bool(out, i, "registered"))
+            okb = append_json_id(&b, row_str(out, i, "sti_hash"), &first);
+    }
+    if (okb && contact_usu > 0) {
+        first = 1;
+        okb = sb_puts(&b, "],\"contact_has\":[");
+        for (size_t i = 0; i < out->nrows && okb; i++) {
+            if (row_bool(out, i, "contact_has"))
+                okb = append_json_id(&b, row_str(out, i, "sti_hash"), &first);
+        }
+        first = 1;
+        if (okb) okb = sb_puts(&b, "],\"contact_missing\":[");
+        for (size_t i = 0; i < out->nrows && okb; i++) {
+            if (!row_bool(out, i, "contact_has"))
+                okb = append_json_id(&b, row_str(out, i, "sti_hash"), &first);
+        }
+    }
+    if (okb) okb = sb_puts(&b, "]}}");
+    sql_result_free(out);
+    if (!okb) {
+        sb_free(&b);
+        cws_response_send_error(res, 500);
+        return;
+    }
+    cws_response_body_owned(res, b.data, b.len, CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
+/* ------------------------------------------------------------------ */
+/* POST /stickers/sync                                                */
+/* ------------------------------------------------------------------ */
+
+static CWS_HANDLER(messaging_stickers_sync_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { cws_response_send_error(res, 401); return; }
+
+    char* body = NULL;
+    if (req->body && req->body_len > 0 && req->body_len <= 65536) {
+        body = (char*)malloc(req->body_len + 1);
+        if (body) {
+            memcpy(body, req->body, req->body_len);
+            body[req->body_len] = '\0';
+        }
+    }
+
+    char** ids = NULL;
+    size_t nids = 0;
+    int parse_err = 0;
+    if (body) {
+        if (json_get_string_array(body, "sticker_ids", &ids, &nids,
+                                  STICKER_MAX_IDS) != 0)
+            parse_err = 1;
+    }
+    free(body);
+    if (parse_err) {
+        free_string_array(ids, nids);
+        send_error_msg(res, 400, "sticker_ids invalido");
+        return;
+    }
+
+    int bad = 0;
+    char* csv = build_ids_csv(ids, nids, &bad);
+    free_string_array(ids, nids);
+    if (bad) {
+        free(csv);
+        if (bad == 2) cws_response_send_error(res, 500);
+        else send_error_msg(res, 400, "sticker_ids invalido");
+        return;
+    }
+
+    sql_result_t* out = messaging_domain_stickers_sync(u->usu_id, csv);
+    free(csv);
+    if (!out) { cws_response_send_error(res, 500); return; }
+
+    const char* ok = field_str(out, "success");
+    if (!ok || strcmp(ok, "true") != 0) {
+        const char* msg = field_str(out, "msg");
+        send_error_msg(res, 400, msg ? msg : "No se sincronizo el inventario");
+        sql_result_free(out);
+        return;
+    }
+    int64_t synced = row_i64(out, 0, "synced", 0);
+    sql_result_free(out);
+
+    char resp[192];
+    int n = snprintf(resp, sizeof(resp),
+                     "{\"success\":true,\"error\":0,"
+                     "\"msg\":\"Inventario sincronizado\","
+                     "\"data\":{\"synced\":%lld}}",
+                     (long long)synced);
+    if (n < 0 || (size_t)n >= sizeof(resp)) {
+        cws_response_send_error(res, 500);
+        return;
+    }
+    send_json(res, 200, resp);
+}
+
+/* ------------------------------------------------------------------ */
 /* /conversations/:public_id/messages (GET historial, POST enviar)     */
 /* ------------------------------------------------------------------ */
 
@@ -753,6 +1522,16 @@ cws_router_t* messaging_routes(void) {
                    messaging_users_list_handler);
     cws_router_add(r, CWS_M_GET, "/users/:public_id",
                    messaging_user_lookup_handler);
+    cws_router_add(r, CWS_M_POST, "/stickers",
+                   messaging_sticker_upload_handler);
+    cws_router_add(r, CWS_M_POST, "/stickers/check",
+                   messaging_stickers_check_handler);
+    cws_router_add(r, CWS_M_POST, "/stickers/sync",
+                   messaging_stickers_sync_handler);
+    cws_router_add(r, CWS_M_GET, "/stickers/:sticker_id",
+                   messaging_sticker_get_handler);
+    cws_router_add(r, CWS_M_GET, "/stickers/:sticker_id/file",
+                   messaging_sticker_file_handler);
     cws_router_add(r, CWS_M_UNKNOWN, "/conversations/:public_id/messages",
                    messaging_messages_handler);
     cws_router_add(r, CWS_M_POST, "/conversations/:public_id/read",

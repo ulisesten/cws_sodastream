@@ -243,7 +243,7 @@ todo el mensaje es el nombre del evento.
 | `joined` | nombre de sala | tras `join` |
 | `left` | nombre de sala | tras `leave` |
 | `message` | `{"public_id","usu_nombre","msg","room","ts"}` | mensaje de la sala |
-| `dm` | `{"msg_id","from","from_nombre","texto","fecha","reply_to"}` | mensaje 1:1 (push del POST de chat) |
+| `dm` | `{"msg_id","from","from_nombre","tipo","sticker_id","texto","fecha","reply_to"[,"sticker"]}` | mensaje 1:1 (push del POST de chat) |
 | `identity` | `{"public_id","nombre"}` | respuesta a `whoami` |
 | `stats` | JSON de `cws_ws_stats_t` | respuesta a `stats` |
 | `error` | texto | formato inválido / evento desconocido |

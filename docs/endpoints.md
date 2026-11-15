@@ -322,6 +322,10 @@ curl -X POST https://cws.sodastream.fun/api/v1/auth/mobile/logout \
 
 Montado en `/api/v1/messaging`. Requiere access token móvil (**Bearer**).
 
+> En la BD, `opr_chat_mensajes.msg_tipo` **ya existe y es `TINYINT`**
+> (`0`=texto, `1`=sticker). La API usa `"tipo":"text"|"sticker"` y el servidor
+> lo mapea a `0/1`; no se agrega una columna nueva.
+
 ### `POST /api/v1/messaging/setup`
 Habilita la mensajería instantánea del usuario autenticado: genera un
 identificador público estilo **nanoid** (12 caracteres, `A-Za-z0-9_-`), lo
@@ -397,8 +401,8 @@ curl -H "Authorization: Bearer <access_token>" \
 {"success":true,"error":0,"msg":"Mensajes obtenidos",
  "data":{"messages":[
    {"msg_id":124,"from":"AB12cd34EF56","es_mio":false,
-    "texto":"hola","fecha":"2026-11-13T18:05:00",
-    "reply_to":null,"leido":false}],
+    "tipo":"text","sticker_id":null,"texto":"hola",
+    "fecha":"2026-11-13T18:05:00","reply_to":null,"leido":false}],
   "next_before":124}}
 ```
 - `400` `before`/`limit` inválidos · `404` contacto no existe · `401` sin token.
@@ -422,9 +426,11 @@ curl -X POST -H "Authorization: Bearer <access_token>" \
          "texto":"hola","fecha":"2026-11-13T18:06:00",
          "reply_to":123,"leido":false}}
 ```
-- `texto` obligatorio (≤4096 bytes UTF-8); `reply_to` opcional y de la misma
-  conversación.
-- `400` mensaje/reply inválido · `404` contacto no existe · `401` sin token.
+- Texto: `{"texto":"hola","reply_to":123}` (≤4096 bytes UTF-8).
+- Sticker: `{"tipo":"sticker","sticker_id":"<64 hex>","reply_to":null}`
+  (sin `texto`); el sticker debe estar registrado.
+- `400` mensaje/reply/tipo inválido · `404` contacto o sticker no existe ·
+  `401` sin token.
 
 ### `POST /api/v1/messaging/conversations/:public_id/read`
 Marca como leídos los mensajes del contacto hasta `hasta` (opcional; sin él,
@@ -440,6 +446,51 @@ curl -X POST -H "Authorization: Bearer <access_token>" \
 > Chat 1:1: `procChatMensajesCons` (historial) y `procChatMensajesProc`
 > (insertar/marcar leído). Requieren la tabla `opr_chat_mensajes` y los SP de
 > `db_sodastream/`.
+
+### Stickers
+
+Content-addressed: `sti_id` = **Streebog-256 hex (64)** de los bytes del
+`.webp`; el archivo vive en `STICKERS_DIR/<sti_id>.webp` (ruta **absoluta** en
+`.env`, igual que `HLS_DIR`/`API_NAS`). Todas requieren Bearer.
+
+#### `POST /api/v1/messaging/stickers`
+Body = bytes WebP (`Content-Type: image/webp`), 512×512, ≤1 MiB. El servidor
+calcula el hash y registra (idempotente). `X-Sticker-Id` opcional (si viene,
+debe coincidir). **201** nuevo / **200** existente:
+```json
+{"success":true,"error":0,"msg":"Sticker registrado","data":{
+  "sticker_id":"<64 hex>","mime":"image/webp","bytes":554,
+  "width":512,"height":512,"animated":false,"exists":false,
+  "url":"/api/v1/messaging/stickers/<64 hex>/file"}}
+```
+`400` WebP/dimensiones/`X-Sticker-Id` · `413` >1 MiB · `415` mime.
+
+#### `GET /api/v1/messaging/stickers/:sticker_id`
+Metadatos (mismo `data`, sin `exists`). `404` no existe.
+
+#### `GET /api/v1/messaging/stickers/:sticker_id/file`
+Archivo `image/webp` con `Cache-Control: private, max-age=31536000, immutable`
+y `ETag: "<id>"` (304 con `If-None-Match`). `404` si no está.
+
+#### `POST /api/v1/messaging/stickers/check`
+```json
+{"contact_public_id":"<opcional>","sticker_ids":["<64 hex>"]}
+```
+**200** `{"data":{"registered":[],"missing":[],"contact_has":[],"contact_missing":[]}}`
+(sin `contact_public_id` solo `registered`/`missing`).
+
+#### `POST /api/v1/messaging/stickers/sync`
+```json
+{"sticker_ids":["<64 hex>"]}
+```
+Reemplaza el inventario del usuario. **200** `{"data":{"synced":N}}`.
+
+> SP `procChatStickersProc`/`Cons`, columnas `msg_tipo`/`msg_sticker_id` y
+> `opr_chat_stickers`/`opr_usuarios_sticker` en `db_sodastream/`; detalle en
+> [`chat_stickers.md`](chat_stickers.md).
+
+> No hay endpoint de "lista de conversaciones" (inbox): el cliente usa
+> `GET /api/v1/messaging/users` + caché local (ver la guía).
 
 Guía de integración del cliente para el flujo 1:1 (identificadores, historial,
 envío y push `dm`): [`chat_1a1_cliente.md`](chat_1a1_cliente.md).
