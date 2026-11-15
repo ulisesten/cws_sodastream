@@ -460,3 +460,12 @@ cws_ws_t* ws_v1_hub(void) {
 const char* ws_v1_path(void) {
     return WS_V1_PATH;
 }
+
+int ws_v1_emit_to_user(int64_t usu_id, const char* event,
+                       const void* payload, size_t len) {
+    if (!g_ws || !event) return CWS_ERR_INVALID;
+    char room[48];
+    int n = snprintf(room, sizeof(room), "user:%lld", (long long)usu_id);
+    if (n < 0 || (size_t)n >= sizeof(room)) return CWS_ERR_INVALID;
+    return cws_ws_to(g_ws, room, event, payload, len);
+}

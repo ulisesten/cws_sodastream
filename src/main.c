@@ -16,6 +16,7 @@
 #include "api/v1/routes/users/domain/users_domain.h"
 #include "api/v1/routes/mobile/mobile_routes.h"
 #include "api/v1/routes/messaging/messaging_routes.h"
+#include "api/v1/routes/messaging/domain/messaging_domain.h"
 #include "api/v1/routes/app/releases_routes.h"
 #include "ws_api/v1/ws_v1.h"
 #include "authorization.h"
@@ -108,6 +109,9 @@ int main(void) {
         return 1;
     }
     users_domain_init();
+
+    /* Acceso a datos del chat 1:1 (procChatMensajesCons/Proc). */
+    messaging_domain_init();
 
     /* Acceso a datos del módulo releases (procCatAppReleasesCons). */
     releases_routes_init();

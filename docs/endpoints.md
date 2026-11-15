@@ -364,6 +364,68 @@ curl -H "Authorization: Bearer <access_token>" \
 
 > Ejecuta `procUsersCons` con `tipoConsulta = 3` (`@usu_id_public`).
 
+### `GET /api/v1/messaging/conversations/:public_id/messages`
+Historial de la conversación con el contacto `:public_id` (Bearer). Orden:
+**más nuevo primero**. El servidor resuelve tu identidad desde el token.
+
+Query: `before=<msg_id>` (opcional), `limit` (default 30, máx 100).
+
+```bash
+curl -H "Authorization: Bearer <access_token>" \
+  "https://cws.sodastream.fun/api/v1/messaging/conversations/JV4y-3-Bkdia/messages?limit=30"
+```
+**200**
+```json
+{"success":true,"error":0,"msg":"Mensajes obtenidos",
+ "data":{"messages":[
+   {"msg_id":124,"from":"AB12cd34EF56","es_mio":false,
+    "texto":"hola","fecha":"2026-11-13T18:05:00",
+    "reply_to":null,"leido":false}],
+  "next_before":124}}
+```
+- `400` `before`/`limit` inválidos · `404` contacto no existe · `401` sin token.
+- `next_before`: cursor para la página siguiente (`null` si no hay más).
+- `from` es el `usu_id_public` del emisor; `es_mio` lo calcula el servidor.
+
+### `POST /api/v1/messaging/conversations/:public_id/messages`
+Envía un mensaje al contacto (Bearer). Persiste en `opr_chat_mensajes` y
+empuja el evento WS `dm` al receptor y a tus otros dispositivos.
+
+```bash
+curl -X POST -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"texto":"hola","reply_to":123}' \
+  https://cws.sodastream.fun/api/v1/messaging/conversations/JV4y-3-Bkdia/messages
+```
+**201**
+```json
+{"success":true,"error":0,"msg":"Mensaje enviado",
+ "data":{"msg_id":125,"from":"VN2qxVIsbz5t","es_mio":true,
+         "texto":"hola","fecha":"2026-11-13T18:06:00",
+         "reply_to":123,"leido":false}}
+```
+- `texto` obligatorio (≤4096 bytes UTF-8); `reply_to` opcional y de la misma
+  conversación.
+- `400` mensaje/reply inválido · `404` contacto no existe · `401` sin token.
+
+### `POST /api/v1/messaging/conversations/:public_id/read`
+Marca como leídos los mensajes del contacto hasta `hasta` (opcional; sin él,
+todos). Bearer.
+
+```bash
+curl -X POST -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" -d '{"hasta":124}' \
+  https://cws.sodastream.fun/api/v1/messaging/conversations/JV4y-3-Bkdia/read
+```
+**200** `{"success":true,"error":0,"msg":"Mensajes marcados como leidos","data":{"actualizados":1}}`
+
+> Chat 1:1: `procChatMensajesCons` (historial) y `procChatMensajesProc`
+> (insertar/marcar leído). Requieren la tabla `opr_chat_mensajes` y los SP de
+> `db_sodastream/`.
+
+Guía de integración del cliente para el flujo 1:1 (identificadores, historial,
+envío y push `dm`): [`chat_1a1_cliente.md`](chat_1a1_cliente.md).
+
 ---
 
 ## Estáticos HLS

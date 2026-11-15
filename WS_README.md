@@ -243,12 +243,17 @@ todo el mensaje es el nombre del evento.
 | `joined` | nombre de sala | tras `join` |
 | `left` | nombre de sala | tras `leave` |
 | `message` | `{"public_id","usu_nombre","msg","room","ts"}` | mensaje de la sala |
+| `dm` | `{"msg_id","from","from_nombre","texto","fecha","reply_to"}` | mensaje 1:1 (push del POST de chat) |
 | `identity` | `{"public_id","nombre"}` | respuesta a `whoami` |
 | `stats` | JSON de `cws_ws_stats_t` | respuesta a `stats` |
 | `error` | texto | formato inválido / evento desconocido |
 
 Al abrir, el socket se une automáticamente a **`lobby`** y a la sala privada
 `user:<usu_id>` (interna).
+
+El chat 1:1 llega como evento **`dm`** (servidor → cliente) a esa sala; el
+envío se hace por HTTP (`POST /api/v1/messaging/conversations/:public_id/messages`).
+Contrato completo en `docs/chat_1a1_cliente.md`.
 
 ---
 

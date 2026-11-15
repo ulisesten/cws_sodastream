@@ -20,4 +20,14 @@ cws_ws_t* ws_v1_hub(void);
 /* Ruta del endpoint ("/ws/v1"). */
 const char* ws_v1_path(void);
 
+/*
+ * Emite un evento a todos los sockets del usuario (sala interna
+ * user:<usu_id>). Pensado para push del chat 1:1 (`dm`). No expone usu_id
+ * en el payload; el llamador arma el JSON público.
+ *
+ * \return CWS_OK o error de cws (CWS_ERR_INVALID si no hay hub).
+ */
+int ws_v1_emit_to_user(int64_t usu_id, const char* event,
+                       const void* payload, size_t len);
+
 #endif
