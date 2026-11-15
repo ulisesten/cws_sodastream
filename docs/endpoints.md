@@ -344,6 +344,24 @@ curl -X POST -H "Authorization: Bearer <access_token>" \
   llamada salvo que quiera rotarlo.
 - `usu_id` es interno y **no** se devuelve.
 
+### `GET /api/v1/messaging/users`
+Lista de usuarios con mensajería habilitada (excluye al propio). Requiere
+**Bearer**. El cliente puede **filtrar la lista localmente** para buscar.
+
+```bash
+curl -H "Authorization: Bearer <access_token>" \
+  https://cws.sodastream.fun/api/v1/messaging/users
+```
+**200**
+```json
+{"success":true,"error":0,"msg":"Usuarios obtenidos",
+ "data":[{"usu_id_public":"AB12cd34EF56","usu_nombre":"KDF2"}]}
+```
+- Solo usuarios con `usu_id_public` de 12; **nunca** se devuelve `usu_id`.
+- `401` sin Bearer válido · `500` error de BD.
+
+> `procUsersCons` `tipoConsulta = 4` (excluye `@usu_id`).
+
 ### `GET /api/v1/messaging/users/:public_id`
 Busca un usuario por su id público de mensajería (nanoid de 12). Requiere
 **Bearer**. Devuelve solo datos públicos; **nunca** `usu_id`.

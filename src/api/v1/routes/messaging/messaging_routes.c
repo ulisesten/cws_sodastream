@@ -367,6 +367,57 @@ static CWS_HANDLER(messaging_setup_handler) {
 }
 
 /* ------------------------------------------------------------------ */
+/* GET /users                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Lista de usuarios con mensajería habilitada (excluye al propio).
+ *  200 {"success":true,"error":0,"msg":"Usuarios obtenidos",
+ *       "data":[{"usu_id_public":"...","usu_nombre":"..."}]}
+ * El cliente puede filtrar la lista localmente. Nunca se devuelve usu_id.
+ */
+static CWS_HANDLER(messaging_users_list_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { cws_response_send_error(res, 401); return; }
+
+    sql_result_t* out = users_domain_list(u->usu_id);
+    if (!out) { cws_response_send_error(res, 500); return; }
+
+    const char* ok = field_str(out, "success");
+    if (ok && strcmp(ok, "false") == 0) {
+        const char* msg = field_str(out, "msg");
+        send_error_msg(res, 400, msg ? msg : "No se pudo obtener la lista");
+        sql_result_free(out);
+        return;
+    }
+
+    strbuf_t b = {0};
+    int okb = sb_puts(&b,
+                      "{\"success\":true,\"error\":0,"
+                      "\"msg\":\"Usuarios obtenidos\",\"data\":[");
+    for (size_t i = 0; i < out->nrows && okb; i++) {
+        const char* pid = row_str(out, i, "usu_id_public");
+        const char* nom = row_str(out, i, "usu_nombre");
+        char* jpid = json_escape_dup(pid ? pid : "");
+        char* jnom = json_escape_dup(nom ? nom : "");
+        okb = jpid && jnom &&
+              sb_printf(&b, "%s{\"usu_id_public\":%s,\"usu_nombre\":%s}",
+                        i == 0 ? "" : ",", jpid, jnom);
+        free(jpid);
+        free(jnom);
+    }
+    if (okb) okb = sb_puts(&b, "]}");
+    sql_result_free(out);
+    if (!okb) {
+        sb_free(&b);
+        cws_response_send_error(res, 500);
+        return;
+    }
+    cws_response_body_owned(res, b.data, b.len, CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
+/* ------------------------------------------------------------------ */
 /* GET /users/:public_id                                               */
 /* ------------------------------------------------------------------ */
 
@@ -698,6 +749,8 @@ cws_router_t* messaging_routes(void) {
     if (!r) return NULL;
     cws_router_use(r, cws_mw_authorization_mobile_verify);
     cws_router_add(r, CWS_M_POST, "/setup", messaging_setup_handler);
+    cws_router_add(r, CWS_M_GET, "/users",
+                   messaging_users_list_handler);
     cws_router_add(r, CWS_M_GET, "/users/:public_id",
                    messaging_user_lookup_handler);
     cws_router_add(r, CWS_M_UNKNOWN, "/conversations/:public_id/messages",

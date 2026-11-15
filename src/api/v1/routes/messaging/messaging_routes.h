@@ -9,6 +9,8 @@
  *
  *   POST /api/v1/messaging/setup -> habilita el chat del usuario y devuelve
  *                                   su identificador público (nanoid 12).
+ *   GET  /api/v1/messaging/users -> lista de usuarios con chat (excluye al
+ *                                   propio; el cliente filtra localmente).
  *   GET  /api/v1/messaging/users/:public_id -> busca un usuario por su id
  *                                   público (devuelve usu_nombre).
  *   GET  /api/v1/messaging/conversations/:public_id/messages

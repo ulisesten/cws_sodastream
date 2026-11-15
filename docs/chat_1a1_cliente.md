@@ -9,15 +9,17 @@ Guía para implementar el chat uno a uno desde el cliente (Android) contra
 | Parte | Estado |
 |---|---|
 | Login Bearer, `POST /messaging/setup`, `GET /messaging/users/:id` | ✅ implementado |
+| `GET /messaging/users` (lista para buscador) | ✅ implementado en código |
 | WebSocket `/ws/v1` con auth Bearer | ✅ implementado |
 | Historial (`GET /conversations/.../messages`) | ✅ implementado en código |
 | Envío (`POST /conversations/.../messages`) + push `dm` | ✅ implementado en código |
 | Marcar leído (`POST /conversations/.../read`) | ✅ implementado en código |
 | Tabla `dbo.opr_chat_mensajes` | ✅ aplicada |
 | SP `procChatMensajesCons` / `procChatMensajesProc` | 📄 aplicar desde `db_sodastream/` |
+| SP `procUsersCons` rama 4 (lista) | 📄 aplicar desde `db_sodastream/` |
 
-Los endpoints de chat devuelven `500` hasta que se apliquen los dos SP en la
-base de datos. El contrato (paths, JSON, códigos) no cambia.
+Los endpoints de chat devuelven `500` (o lista vacía) hasta que se apliquen
+los SP en la base de datos. El contrato (paths, JSON, códigos) no cambia.
 
 ## Identificadores
 
@@ -28,8 +30,8 @@ base de datos. El contrato (paths, JSON, códigos) no cambia.
 | Mensaje | `msg_id` | entero, cursor de paginación |
 
 - `usu_id_public` **propio**: lo devuelve `POST /messaging/setup`. Guárdalo.
-- `usu_id_public` **del contacto**: viene de tu lista de usuarios o de
-  `GET /messaging/users/:public_id`.
+- `usu_id_public` **del contacto**: viene de `GET /messaging/users` (lista) o de
+  `GET /messaging/users/:public_id` (lookup exacto).
 - Nunca compares ni muestres `usu_id`.
 
 ## Flujo
@@ -38,12 +40,13 @@ base de datos. El contrato (paths, JSON, códigos) no cambia.
 1. Login                 → access_token (Bearer)
 2. Setup (una vez)       → mi usu_id_public
 3. Conectar WS (Bearer)  → recibe evento `dm`
-4. Click en contacto     → contacto.usu_id_public
-5. GET historial         → mensajes (msg_id, from, es_mio, texto, ...)
-6. Render                → burbuja propia si msg.from == mi usu_id_public
-7. Enviar (HTTP POST)    → 201 con msg_id; el receptor recibe `dm` por WS
-8. Paginar               → before=<msg_id más viejo cargado>
-9. Responder             → reply_to=<msg_id citado>
+4. Contactos             → GET /messaging/users (lista; filtrar localmente)
+5. Click en contacto     → contacto.usu_id_public
+6. GET historial         → mensajes (msg_id, from, es_mio, texto, ...)
+7. Render                → burbuja propia si msg.from == mi usu_id_public
+8. Enviar (HTTP POST)    → 201 con msg_id; el receptor recibe `dm` por WS
+9. Paginar               → before=<msg_id más viejo cargado>
+10. Responder            → reply_to=<msg_id citado>
 ```
 
 ## Endpoints (Bearer)
@@ -81,6 +84,22 @@ GET /api/v1/messaging/users/{usu_id_public}
 ```
 
 - `400` formato inválido · `404` no existe · `401` sin token.
+
+### 2.1 Listar usuarios (para el buscador)
+
+```http
+GET /api/v1/messaging/users
+```
+
+**200**
+```json
+{"success":true,"error":0,"msg":"Usuarios obtenidos",
+ "data":[{"usu_id_public":"AB12cd34EF56","usu_nombre":"KDF2"}]}
+```
+
+- Devuelve los usuarios con mensajería habilitada, **excluyendo al propio**.
+- El cliente puede **filtrar la lista localmente** por `usu_nombre`.
+- `401` sin token · `500` error de BD.
 
 ### 3. Historial de la conversación
 
@@ -188,14 +207,15 @@ dm
 8. **Refresh/reconexión**: refrescar el token no afecta al WS abierto; al
    reconectar usa el access más reciente (ver `WS_README.md`).
 9. **Logout**: cierra el WS y borra el `usu_id_public` local.
-10. **Contactos**: la agenda sale de tu lista de usuarios; para este flujo no
-    se necesita tabla de contactos en el servidor.
+10. **Contactos**: usa `GET /messaging/users` para traer la lista (ya excluye
+    al propio) y filtra localmente; no se necesita tabla de contactos.
 
 ## Android — checklist
 
 - [ ] Guardar `access_token` y `usu_id_public` (DataStore).
 - [ ] `setup` una sola vez (si falta el id).
 - [ ] Conectar WS con Bearer y el cliente GOST; manejar `dm`.
+- [ ] Listar contactos (`GET /messaging/users`) y filtrar localmente.
 - [ ] Historial al abrir el chat (`limit=30`, luego paginar).
 - [ ] Render con `msg.from == mi usu_id_public` (o `es_mio`).
 - [ ] Enviar con POST; UI optimista con id temporal; reemplazar por `msg_id`.

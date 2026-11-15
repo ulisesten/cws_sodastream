@@ -55,4 +55,13 @@ sql_result_t* users_domain_set_public_id(int64_t usu_id,
  */
 sql_result_t* users_domain_by_public_id(const char* public_id);
 
+/**
+ * \brief users_domain_list: lista de usuarios con mensajería habilitada
+ *        (procUsersCons, tipoConsulta = 4), excluyendo `exclude_usu_id`.
+ *
+ * Devuelve `usu_id, usu_id_public, usu_nombre` ordenado por nombre. El
+ * llamador NO debe exponer `usu_id`.
+ */
+sql_result_t* users_domain_list(int64_t exclude_usu_id);
+
 #endif
