@@ -52,6 +52,10 @@ sql_result_t* messaging_domain_mark_read(int64_t lector, int64_t otro,
 /** Directorio configurado (STICKERS_DIR; default "public/stickers"). */
 const char* messaging_domain_stickers_dir(void);
 
+/** Asegura que STICKERS_DIR exista y sea escribible (lo crea si falta).
+ *  \return 1 si está listo; 0 si no (ruta inválida/sin permisos). */
+int messaging_domain_stickers_ready(void);
+
 /**
  * \brief Registra un sticker (procChatStickersProc, tipoRegistro = 1).
  *        Idempotente por `sti_hash` (64 hex). \return resultado con

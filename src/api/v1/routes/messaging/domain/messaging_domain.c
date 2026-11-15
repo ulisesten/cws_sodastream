@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "configuration.h"
 
@@ -55,6 +56,14 @@ static int mkdir_p(const char* path) {
     return 0;
 }
 
+int messaging_domain_stickers_ready(void) {
+    const char* dir = messaging_domain_stickers_dir();
+    if (!dir || !*dir) return 0;
+    if (mkdir_p(dir) != 0) return 0;
+    if (access(dir, W_OK) != 0) return 0;
+    return 1;
+}
+
 void messaging_domain_init(void) {
     app_config_t* cfg = configuration_new();
     if (!cfg) return;
@@ -63,7 +72,13 @@ void messaging_domain_init(void) {
     if (!se) return;
     sql_eject_free(g_sql);
     g_sql = se;
-    mkdir_p(messaging_domain_stickers_dir());
+
+    const char* dir = messaging_domain_stickers_dir();
+    if (messaging_domain_stickers_ready())
+        cws_log_info("stickers: dir %s listo", dir);
+    else
+        cws_log_error("stickers: STICKERS_DIR invalido o sin permisos: %s",
+                      dir ? dir : "(null)");
 }
 
 void messaging_domain_shutdown(void) {

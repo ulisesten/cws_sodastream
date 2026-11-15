@@ -13,6 +13,18 @@
 --   DROP TABLE dbo.opr_chat_stickers;
 -- ============================================================
 
+-- Si existe una versión vieja de las tablas (sin las columnas nuevas),
+-- recrearlas. No hay datos productivos de stickers todavía.
+IF OBJECT_ID('dbo.opr_chat_stickers', 'U') IS NOT NULL
+   AND (COL_LENGTH('dbo.opr_chat_stickers', 'sti_hash') IS NULL
+        OR COL_LENGTH('dbo.opr_chat_stickers', 'sti_id_created_by') IS NULL)
+    DROP TABLE dbo.opr_chat_stickers;
+GO
+IF OBJECT_ID('dbo.opr_usuarios_sticker', 'U') IS NOT NULL
+   AND COL_LENGTH('dbo.opr_usuarios_sticker', 'uss_id') IS NULL
+    DROP TABLE dbo.opr_usuarios_sticker;
+GO
+
 IF OBJECT_ID('dbo.opr_chat_stickers', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.opr_chat_stickers (

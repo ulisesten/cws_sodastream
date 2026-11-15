@@ -455,8 +455,9 @@ Content-addressed: `sti_id` = **Streebog-256 hex (64)** de los bytes del
 
 #### `POST /api/v1/messaging/stickers`
 Body = bytes WebP (`Content-Type: image/webp`), 512×512, ≤1 MiB. El servidor
-calcula el hash y registra (idempotente). `X-Sticker-Id` opcional (si viene,
-debe coincidir). **201** nuevo / **200** existente:
+crea/valida `STICKERS_DIR`, calcula el hash y registra (idempotente);
+`X-Sticker-Id` opcional (si viene, debe coincidir). **201** nuevo / **200**
+existente:
 ```json
 {"success":true,"error":0,"msg":"Sticker registrado","data":{
   "sticker_id":"<64 hex>","mime":"image/webp","bytes":554,

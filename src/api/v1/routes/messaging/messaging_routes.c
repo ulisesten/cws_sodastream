@@ -20,6 +20,7 @@
 #include "messaging_routes.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1139,6 +1140,10 @@ static CWS_HANDLER(messaging_sticker_upload_handler) {
         return;
     }
 
+    /* c_gost_encryption::gost_hash() usa la presentación one-shot
+     * reverse(Streebog256(reverse(bytes))), no el Streebog estándar. Es el
+     * id canónico del sticker; el cliente debe replicar esta variante
+     * (ver docs/chat_stickers.md → Hallazgo de verificación). */
     uint8_t digest[32];
     if (gost_hash(data, req->body_len, GOST_HASH_256, digest) != GOST_OK) {
         cws_response_send_error(res, 500);
@@ -1158,9 +1163,18 @@ static CWS_HANDLER(messaging_sticker_upload_handler) {
         }
     }
 
+    if (!messaging_domain_stickers_ready()) {
+        cws_log_error("stickers: STICKERS_DIR no disponible: %s",
+                      messaging_domain_stickers_dir());
+        send_error_msg(res, 500,
+                       "Almacenamiento de stickers no disponible (STICKERS_DIR)");
+        return;
+    }
+
     char path[1200];
     if (!sticker_path(id, path, sizeof(path))) {
-        cws_response_send_error(res, 500);
+        cws_log_error("stickers: ruta demasiado larga para %s", id);
+        send_error_msg(res, 500, "No se pudo guardar el sticker");
         return;
     }
     int existed = (access(path, F_OK) == 0);
@@ -1168,17 +1182,23 @@ static CWS_HANDLER(messaging_sticker_upload_handler) {
         char tmp[1300];
         snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long)getpid());
         FILE* f = fopen(tmp, "wb");
-        if (!f) { cws_response_send_error(res, 500); return; }
+        if (!f) {
+            cws_log_error("stickers: fopen %s: %s", tmp, strerror(errno));
+            send_error_msg(res, 500, "No se pudo guardar el sticker");
+            return;
+        }
         size_t wr = fwrite(data, 1, req->body_len, f);
         int cl = fclose(f);
         if (cl != 0 || wr != req->body_len) {
+            cws_log_error("stickers: escritura incompleta en %s", tmp);
             unlink(tmp);
-            cws_response_send_error(res, 500);
+            send_error_msg(res, 500, "No se pudo guardar el sticker");
             return;
         }
         if (rename(tmp, path) != 0) {
+            cws_log_error("stickers: rename %s: %s", tmp, strerror(errno));
             unlink(tmp);
-            cws_response_send_error(res, 500);
+            send_error_msg(res, 500, "No se pudo guardar el sticker");
             return;
         }
     }
@@ -1186,13 +1206,15 @@ static CWS_HANDLER(messaging_sticker_upload_handler) {
     sql_result_t* out = messaging_domain_sticker_insert(
         id, "image/webp", (int64_t)req->body_len, w, h, anim, u->usu_id);
     if (!out) {
+        cws_log_error("stickers: insert DB falló (procChatStickersProc)");
         if (!existed) unlink(path);
-        cws_response_send_error(res, 500);
+        send_error_msg(res, 500, "No se pudo registrar el sticker");
         return;
     }
     const char* ok = field_str(out, "success");
     if (!ok || strcmp(ok, "true") != 0) {
         const char* msg = field_str(out, "msg");
+        cws_log_error("stickers: insert rechazado: %s", msg ? msg : "(sin msg)");
         send_error_msg(res, 400,
                        msg ? msg : "No se pudo registrar el sticker");
         sql_result_free(out);

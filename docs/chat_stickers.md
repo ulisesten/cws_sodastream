@@ -20,7 +20,8 @@ que el receptor pueda obtener el archivo cuando no lo tenga.
   `procChatStickersProc.sql`, `procChatStickersCons.sql` y las versiones
   actualizadas de `procChatMensajesProc/Cons.sql`.
 - `STICKERS_DIR` agregado al `.env` como ruta **absoluta** (igual que
-  `HLS_DIR`/`API_NAS`); el server crea el directorio al iniciar.
+  `HLS_DIR`/`API_NAS`); el API crea el directorio al iniciar y lo revalida
+  antes de cada upload.
 - `opr_chat_stickers`: PK `sti_id INT IDENTITY`; el hash de contenido va en
   `sti_hash CHAR(64) UNIQUE` (id público de la API).
 - Campo extra `sti_id_created_by INT` (usuario que registró el sticker;
@@ -29,6 +30,25 @@ que el receptor pueda obtener el archivo cuando no lo tenga.
   `1`=sticker; la API usa `"text"`/`"sticker"`) y `msg_texto` es `NOT NULL`
   (para stickers se guarda `''`).
 - `404` al enviar un sticker no registrado (el cliente debe subirlo antes).
+
+### Hallazgo de verificación (2026-11-15)
+
+- **Hash real del `sticker_id`**: el handler usa `gost_hash` de
+  `c_gost_encryption`, que es la variante
+  `reverse(Streebog256(reverse(bytes)))` (ver `gost/hash/hash.h`), **no** el
+  Streebog-256 estándar. Verificado: enviando ese id en `X-Sticker-Id` la
+  validación pasa (el estándar y SHA-256 dan “X-Sticker-Id no coincide”). El
+  cliente debe replicar esa variante para el id local, o usar el `sticker_id`
+  que devuelve el upload.
+- **Resuelto en código**: el API crea `STICKERS_DIR` al iniciar (`mkdir -p`) y
+  lo **revalida antes de cada upload**; si no existe o no es escribible
+  devuelve **500 JSON** (`Almacenamiento de stickers no disponible
+  (STICKERS_DIR)`) y lo registra en el log. Los fallos de escritura/DB también
+  son JSON y quedan logueados.
+  - Requisito: `STICKERS_DIR` **absoluto** en `.env` y el proceso con permiso
+    para crear/escribir ahí.
+  - SQL: aplicar `propuesta_chat_stickers.sql` (incluye drop/recreate de
+    tablas viejas) y `procChatStickersProc.sql` (fix `[exists]`).
 
 ---
 
