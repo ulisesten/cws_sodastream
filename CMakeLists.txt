@@ -17,6 +17,8 @@ set(GOST_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/c_gost_encryption)
 
 find_package(ODBC REQUIRED)
+find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Gather all .c under src/ and core/ recursively.
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
@@ -24,7 +26,8 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/core/*.c")
 
 add_executable(cws_sodastream ${APP_SOURCES})
-target_link_libraries(cws_sodastream PRIVATE cws ODBC::ODBC gost::gost)
+target_link_libraries(cws_sodastream PRIVATE cws ODBC::ODBC gost::gost
+    CURL::libcurl Threads::Threads)
 
 # Generador de tablas hash para cfg_getenv (scripts/gen_env_hashes.sh).
 add_executable(hashgen EXCLUDE_FROM_ALL scripts/hashgen.c core/hash_table.c)

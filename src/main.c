@@ -18,7 +18,12 @@
 #include "api/v1/routes/messaging/messaging_routes.h"
 #include "api/v1/routes/messaging/domain/messaging_domain.h"
 #include "api/v1/routes/app/releases_routes.h"
+#include "api/v1/routes/integrations/telegram/telegram_routes.h"
+#include "api/v1/routes/integrations/external/external_routes.h"
 #include "ws_api/v1/ws_v1.h"
+#include "integrations/telegram/telegram.h"
+#include "integrations/telegram/telegram_domain.h"
+#include "integrations/telegram/telegram_calls.h"
 #include "authorization.h"
 #include "authorization_mobile.h"
 #include "configuration.h"
@@ -116,6 +121,10 @@ int main(void) {
     /* Acceso a datos del módulo releases (procCatAppReleasesCons). */
     releases_routes_init();
 
+    /* Integración Telegram: dominio (códigos/vínculos) + bot long polling. */
+    telegram_domain_init();
+    telegram_calls_init();
+
     /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
 
 
@@ -162,11 +171,22 @@ int main(void) {
      */
     cws_app_mount(g_app, "/api/v1/app", releases_routes());
 
+    /* Integraciones: Telegram (Bearer) y sistema externo (HMAC). */
+    {
+        cws_router_t* tg = telegram_routes();
+        if (tg) cws_app_mount(g_app, "/api/v1/integrations/telegram", tg);
+        cws_router_t* ext = external_routes();
+        if (ext) cws_app_mount(g_app, "/api/v1/integrations/external", ext);
+    }
+
     /* WebSocket API v1: endpoint genérico de prueba en /ws/v1. El handshake
      * usa GOST (Streebog-256); ver WS_README.md. */
     if (ws_v1_init(g_app) != CWS_OK) {
         fprintf(stderr, "No se pudo inicializar WebSocket (/ws/v1)\n");
     }
+
+    /* Bot de Telegram (si TELEGRAM_BOT_TOKEN está configurado). */
+    telegram_init();
 
     /* Servidor estático de HLS: sirve los archivos de HLS_DIR bajo
      * /hls/videos con Content-Type/Cache-Control por extensión. */
@@ -187,6 +207,8 @@ int main(void) {
     fprintf(stderr, "cws_sodastream starting on port %d (PORT from .env)\n",
             port);
     int rc = cws_app_run(g_app);
+    telegram_shutdown();
+    telegram_domain_shutdown();
     cws_app_free(g_app);
     return rc == CWS_OK ? 0 : 1;
 }

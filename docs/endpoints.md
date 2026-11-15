@@ -16,6 +16,7 @@ autenticación web/móvil con tokens GOST y servidor estático HLS.
 - [Auth web (cookies + CSRF)](#auth-web-cookies--csrf)
 - [Auth móvil (Bearer)](#auth-móvil-bearer)
 - [Mensajería](#mensajería)
+- [Integraciones](#integraciones)
 - [Estáticos HLS](#estáticos-hls)
 - [Modelo de autenticación](#modelo-de-autenticación)
 - [Configuración (.env)](#configuración-env)
@@ -498,6 +499,54 @@ envío y push `dm`): [`chat_1a1_cliente.md`](chat_1a1_cliente.md).
 
 ---
 
+## Integraciones
+
+Montado en `/api/v1/integrations`. Ver `docs/telegram_bot.md` para el flujo
+completo y la configuración.
+
+### Telegram (Bearer)
+
+- `POST /api/v1/integrations/telegram/link` → `{ code, url, expires_in }`.
+  Abrir `url` en Telegram y pulsar Start.
+- `GET /api/v1/integrations/telegram/status` → `{ linked, telegram_username,
+  telegram_name }`.
+- `POST /api/v1/integrations/telegram/unlink` → borra el vínculo.
+- `POST /api/v1/integrations/telegram/notify` body
+  `{ "usu_id_public": "...", "call_id": "...", "tipo": "audio|video|walkie",
+  "ip": "...", "telefono": "..." }` → estado ringing en memoria, mapea
+  IP/teléfono del solicitante, emite WSS `call.incoming` y, si no hay WS o
+  `TELEGRAM_NOTIFY_ALWAYS=1`, manda Telegram con `cws://call/<call_id>`.
+- `POST /api/v1/integrations/telegram/accept` (receptor) body
+  `{ "call_id": "...", "ip": "...", "telefono": "..." }` → valida, mapea
+  IP/teléfono del receptor y emite WSS `call.accepted` al solicitante.
+- `POST /api/v1/integrations/telegram/reject` `{ "call_id": "..." }` →
+  `call.rejected`.
+- `POST /api/v1/integrations/telegram/end` `{ "call_id": "..." }` →
+  `call.ended` al otro extremo.
+- `GET /api/v1/integrations/telegram/pending` → llamadas ringing/aceptadas.
+
+La IP se toma de `X-Forwarded-For`/`X-Real-IP` y, si no existe, del body.
+
+### Sistema externo (HMAC)
+
+Headers: `X-Integration-Timestamp`, `X-Integration-Nonce`,
+`X-Integration-Signature` = hex HMAC-Streebog-256 de
+`timestamp + "\n" + nonce + "\n" + body`. Ventana ±300 s; nonce no reutilizable.
+
+- `POST /api/v1/integrations/external/link`
+  `{ "usu_id_public": "...", "telefono": "...", "ip": "...", "id_externo": "..." }`
+  (normalmente los mapeos ya los crean `/telegram/notify` y `/telegram/accept`).
+- `POST /api/v1/integrations/external/notify`
+  `{ "telefono" | "ip" | "id_externo" | "usu_id_public": "...", "call_id": "...",
+  "tipo": "audio|video|walkie", "nombre": "..." }`
+
+> Sin FCM/APNs: con la app abierta el aviso va por WSS; con la app cerrada el
+> usuario recibe Telegram y toca el deep link. Requiere aplicar
+> `sql/telegram_integration.sql` con un usuario con permisos DDL.
+> Guía de cliente: `docs/telegram_client.md`.
+
+---
+
 ## Estáticos HLS
 
 ### `GET /hls/videos/<ruta...>`
@@ -572,4 +621,14 @@ MOBILE_SESSION_TYPE=2
 PASSWORD_KDF_ITERATIONS=100000
 PASSWORD_PEPPER=<secreto del servidor>
 NODE_ENV=production                                # cookies Secure
+
+# Telegram / integración externa (ver docs/telegram_bot.md)
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_BOT_USERNAME=mi_bot
+TELEGRAM_API_BASE=https://api.telegram.org
+TELEGRAM_POLL_TIMEOUT=20
+TELEGRAM_NOTIFY_ALWAYS=0
+TELEGRAM_LINK_TTL_MIN=15
+TELEGRAM_CALL_URI=cws
+EXTERNAL_API_SECRET=<secreto-largo-aleatorio>
 ```

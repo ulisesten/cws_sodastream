@@ -115,6 +115,22 @@ const char* cfg_getenv(const char* key) {
             return env_get("API_NAS");
         case 0x0923b8fdu: /* STICKERS_DIR */
             return env_get("STICKERS_DIR");
+        case 0x3ae54f82u: /* TELEGRAM_BOT_TOKEN */
+            return env_get("TELEGRAM_BOT_TOKEN");
+        case 0x914cd6c9u: /* TELEGRAM_BOT_USERNAME */
+            return env_get("TELEGRAM_BOT_USERNAME");
+        case 0xee81b94fu: /* TELEGRAM_API_BASE */
+            return env_get("TELEGRAM_API_BASE");
+        case 0x701f8492u: /* TELEGRAM_POLL_TIMEOUT */
+            return env_get("TELEGRAM_POLL_TIMEOUT");
+        case 0x0237c83au: /* TELEGRAM_NOTIFY_ALWAYS */
+            return env_get("TELEGRAM_NOTIFY_ALWAYS");
+        case 0x35953fe3u: /* TELEGRAM_LINK_TTL_MIN */
+            return env_get("TELEGRAM_LINK_TTL_MIN");
+        case 0x9d082a86u: /* TELEGRAM_CALL_URI */
+            return env_get("TELEGRAM_CALL_URI");
+        case 0xa67ea4c6u: /* EXTERNAL_API_SECRET */
+            return env_get("EXTERNAL_API_SECRET");
         default:
             return env_get(key);
     }

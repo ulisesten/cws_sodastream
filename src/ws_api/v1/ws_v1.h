@@ -30,4 +30,7 @@ const char* ws_v1_path(void);
 int ws_v1_emit_to_user(int64_t usu_id, const char* event,
                        const void* payload, size_t len);
 
+/* 1 si el usuario tiene al menos un socket WS activo. */
+int ws_v1_user_online(int64_t usu_id);
+
 #endif

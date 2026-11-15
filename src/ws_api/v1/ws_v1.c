@@ -469,3 +469,11 @@ int ws_v1_emit_to_user(int64_t usu_id, const char* event,
     if (n < 0 || (size_t)n >= sizeof(room)) return CWS_ERR_INVALID;
     return cws_ws_to(g_ws, room, event, payload, len);
 }
+
+int ws_v1_user_online(int64_t usu_id) {
+    if (!g_ws) return 0;
+    char room[48];
+    int n = snprintf(room, sizeof(room), "user:%lld", (long long)usu_id);
+    if (n < 0 || (size_t)n >= sizeof(room)) return 0;
+    return cws_ws_room_size(g_ws, room) > 0;
+}
