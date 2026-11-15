@@ -1164,10 +1164,19 @@ static CWS_HANDLER(messaging_sticker_upload_handler) {
     }
 
     if (!messaging_domain_stickers_ready()) {
-        cws_log_error("stickers: STICKERS_DIR no disponible: %s",
-                      messaging_domain_stickers_dir());
-        send_error_msg(res, 500,
-                       "Almacenamiento de stickers no disponible (STICKERS_DIR)");
+        const char* sel = messaging_domain_stickers_dir();
+        char emsg[768];
+        if (sel && *sel)
+            snprintf(emsg, sizeof(emsg),
+                     "Almacenamiento de stickers no disponible (%s)", sel);
+        else
+            snprintf(emsg, sizeof(emsg),
+                     "Almacenamiento de stickers no disponible "
+                     "(STICKERS_DIR=%s, STICKERS_DIR_RELATIVE=%s)",
+                     cfg_getenv("STICKERS_DIR") ? cfg_getenv("STICKERS_DIR") : "",
+                     cfg_getenv("STICKERS_DIR_RELATIVE")
+                         ? cfg_getenv("STICKERS_DIR_RELATIVE") : "");
+        send_error_msg(res, 500, emsg);
         return;
     }
 
