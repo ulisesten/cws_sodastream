@@ -40,13 +40,19 @@ que el receptor pueda obtener el archivo cuando no lo tenga.
   validación pasa (el estándar y SHA-256 dan “X-Sticker-Id no coincide”). El
   cliente debe replicar esa variante para el id local, o usar el `sticker_id`
   que devuelve el upload.
-- **Resuelto en código**: el API crea `STICKERS_DIR` al iniciar (`mkdir -p`) y
-  lo **revalida antes de cada upload**; si no existe o no es escribible
-  devuelve **500 JSON** (`Almacenamiento de stickers no disponible
-  (STICKERS_DIR)`) y lo registra en el log. Los fallos de escritura/DB también
+- **502/upload >8 KB (resuelto)**: el server `cws` usaba un buffer fijo de
+  recepción (`CWS_RECV_BUF=8192`) y parseaba requests incompletas; un body
+  mayor cortaba la conexión (502). Ahora `cws_conn_t` usa un buffer dinámico
+  que crece hasta `max_header+max_body`, espera la request completa antes de
+  parsear y libera/encoge el buffer. También se corrigió `Connection: close`
+  (se comparaba un valor de header no NUL-terminado). Commit `cws@3ab262a`.
+- **Directorio resuelto en código**: el API crea `STICKERS_DIR` al iniciar
+  (`mkdir -p`) y lo **revalida antes de cada upload**; si no existe o no es
+  escribible prueba `STICKERS_DIR_RELATIVE` y, si tampoco, responde **500
+  JSON** con la ruta y lo registra en el log. Los fallos de escritura/DB también
   son JSON y quedan logueados.
-  - Requisito: `STICKERS_DIR` **absoluto** en `.env` y el proceso con permiso
-    para crear/escribir ahí.
+  - Requisito: que el **usuario del proceso** (p. ej. `ulisesten`) pueda
+    crear/escribir en la ruta; el API no eleva permisos.
   - SQL: aplicar `propuesta_chat_stickers.sql` (incluye drop/recreate de
     tablas viejas) y `procChatStickersProc.sql` (fix `[exists]`).
 
