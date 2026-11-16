@@ -535,17 +535,19 @@ Reglas:
 ## 9. API y eventos
 
 ### 9.1 Endpoints REST (borrador)
-| Método | Ruta | Descripción |
+| Método | Ruta | Estado |
 |---|---|---|
-| POST | `/api/v1/calls` | Crear llamada (1:1/grupo/walkie) |
-| GET | `/api/v1/calls/:call_id` | Estado/participantes (sin contenido) |
-| POST | `/api/v1/calls/:call_id/accept` | Aceptar |
-| POST | `/api/v1/calls/:call_id/reject` | Rechazar |
-| POST | `/api/v1/calls/:call_id/end` | Terminar |
-| POST | `/api/v1/calls/:call_id/floor` | `{ "accion": "request|release" }` |
-| GET | `/api/v1/calls/ice` | ICE/TURN con credenciales temporales |
-| GET | `/api/v1/calls/history` | CDR del usuario (paginado) |
-| POST | `/api/v1/calls/:call_id/token` | Renovar call token (TTL corto) |
+| POST | `/api/v1/calls` | Pendiente como alias; hoy el alta es `/api/v1/integrations/telegram/notify` |
+| GET | `/api/v1/calls/:call_id` | Implementado (estado/rol/peer) |
+| POST | `/api/v1/calls/:call_id/accept` | Pendiente como alias; hoy `/integrations/telegram/accept` |
+| POST | `/api/v1/calls/:call_id/reject` | Pendiente como alias; hoy `/integrations/telegram/reject` |
+| POST | `/api/v1/calls/:call_id/end` | Pendiente como alias; hoy `/integrations/telegram/end` |
+| POST | `/api/v1/calls/:call_id/floor` | Pendiente (walkie) |
+| GET | `/api/v1/calls/:call_id/ice` | Implementado: STUN/TURN temporales |
+| POST | `/api/v1/calls/:call_id/sdp` | Implementado: relay `call.sdp` |
+| POST | `/api/v1/calls/:call_id/ice` | Implementado: relay `call.ice` |
+| GET | `/api/v1/calls/history` | Pendiente (CDR) |
+| POST | `/api/v1/calls/:call_id/token` | Pendiente (Janus/grupo) |
 | POST | `/api/v1/integrations/telegram/link` | Enlazar Telegram (código de un solo uso) |
 | POST | `/api/v1/integrations/external/calls` | Crear/notificar llamada externa (HMAC) |
 | POST | `/api/v1/integrations/external/link` | Mapear IP/teléfono/ID a `usu_id_public` (HMAC) |

@@ -16,6 +16,7 @@ autenticación web/móvil con tokens GOST y servidor estático HLS.
 - [Auth web (cookies + CSRF)](#auth-web-cookies--csrf)
 - [Auth móvil (Bearer)](#auth-móvil-bearer)
 - [Mensajería](#mensajería)
+- [Llamadas (señalización 1:1)](#llamadas-señalización-11)
 - [Integraciones](#integraciones)
 - [Estáticos HLS](#estáticos-hls)
 - [Modelo de autenticación](#modelo-de-autenticación)
