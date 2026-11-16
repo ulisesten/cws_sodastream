@@ -518,6 +518,11 @@ la señalización WebRTC.
 SDP/ICE solo con la llamada `accepted` (`409` si no). El servidor no maneja
 media ni descifra. Ver `docs/telegram_client.md`.
 
+Si `ice_servers` viene vacío, `data.warning` lo explica: faltan
+`STUN_URLS`/`TURN_URLS`/`TURN_SECRET` en `.env`. Sin TURN solo funcionan rutas
+P2P directas/LAN; para NAT simétrico hace falta TURN. El `TURN_SECRET` debe
+coincidir con `static-auth-secret` de coturn.
+
 ---
 
 ## Integraciones

@@ -314,7 +314,19 @@ static CWS_HANDLER(calls_ice_handler) {
             if (*p) append_turn(&b, &first, p, user, cred);
         }
     }
-    sb_printf(&b, "],\"expires_in\":%d}}", ttl > 0 ? ttl : 0);
+    const char* stun_cfg = cfg_getenv("STUN_URLS");
+    const char* turn_cfg = cfg_getenv("TURN_URLS");
+    const char* turn_sec = cfg_getenv("TURN_SECRET");
+    int have_stun = stun_cfg && *stun_cfg;
+    int have_turn = turn_cfg && *turn_cfg && turn_sec && *turn_sec;
+    const char* warning = NULL;
+    if (!have_stun && !have_turn)
+        warning = "STUN/TURN no configurados: ice_servers vacío";
+    else if (!have_turn)
+        warning = "TURN no configurado: solo STUN";
+    sb_printf(&b, "],\"expires_in\":%d", ttl > 0 ? ttl : 0);
+    if (warning) sb_printf(&b, ",\"warning\":\"%s\"", warning);
+    sb_puts(&b, "}}");
     free(call_id);
     if (!b.data) { send_error(res, 500, "Sin memoria"); return; }
     cws_response_status(res, 200);
@@ -516,6 +528,15 @@ static CWS_HANDLER(calls_ice_path_handler) {
 }
 
 cws_router_t* calls_routes(void) {
+    const char* stun = cfg_getenv("STUN_URLS");
+    const char* turn = cfg_getenv("TURN_URLS");
+    const char* sec = cfg_getenv("TURN_SECRET");
+    fprintf(stderr,
+            "calls: ICE STUN=%s TURN=%s TURN_SECRET=%s\n",
+            (stun && *stun) ? "configurado" : "vacío",
+            (turn && *turn) ? "configurado" : "vacío",
+            (sec && *sec) ? "configurado" : "vacío");
+
     cws_router_t* r = cws_router_new();
     if (!r) return NULL;
     cws_router_use(r, cws_mw_authorization_mobile_verify);

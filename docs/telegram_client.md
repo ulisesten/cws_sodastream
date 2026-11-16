@@ -270,6 +270,10 @@ P2P (o TURN) y E2EE en el cliente.
   - `call.ice`: `{call_id, from_public, candidate, sdpMid, sdpMLineIndex, usernameFragment}`
 - `GET /ice` devuelve `ice_servers` con STUN y TURN (usuario/credencial
   temporales; expira). Refresca antes de `expires_in`.
+- Si `ice_servers` viene vacío o con `warning`, el servidor no tiene
+  STUN/TURN configurado. No hardcodees un STUN público: muestra el aviso y,
+  si aplica, usa solo candidatos host (LAN). Sin TURN no hay fallback para
+  NAT simétrico.
 - `GET /calls/:call_id` devuelve `estado`, `role`, `peer_public`,
   `peer_name` y `peer_ip` (informativo; la ruta real la deciden los
   candidatos ICE).
