@@ -16,10 +16,21 @@
 #   PRIVATE_IP=192.168.1.78          IP local del host (se autodetecta si falta)
 set -eu
 
-CONF=${CONF:-/etc/turnserver.conf}
+CONF=${CONF:-}
 PUBLIC_HOST=${PUBLIC_HOST:-turn.sodastream.fun}
 RESOLVER=${RESOLVER:-1.1.1.1}
 PRIVATE_IP=${PRIVATE_IP:-}
+
+# La ruta depende de la distro/unit: Debian/Ubuntu suele usar
+# /etc/turnserver.conf; Fedora/RHEL y el unit con `-c` usan
+# /etc/coturn/turnserver.conf. Se puede forzar con CONF=...
+if [ -z "$CONF" ]; then
+    if [ -f /etc/coturn/turnserver.conf ]; then
+        CONF=/etc/coturn/turnserver.conf
+    else
+        CONF=/etc/turnserver.conf
+    fi
+fi
 
 RESTART=1
 case "${1:-}" in

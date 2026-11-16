@@ -179,6 +179,11 @@ Si tu unit se llama `turnserver.service`, usa
 
 Notas:
 
+- La ruta por defecto depende de la distro: si existe
+  `/etc/coturn/turnserver.conf` usa esa (Fedora/RHEL, o cuando el unit pasa
+  `-c /etc/coturn/turnserver.conf`); si no, `/etc/turnserver.conf`. Comprueba
+  cuál usa el servicio con `ps -ef | grep '[t]urnserver'` y fuérzala con
+  `CONF=...` si hace falta.
 - El script usa `turn.sodastream.fun` (tu DDNS) para obtener la pública y
   autodetecta la privada con `ip route get 1.1.1.1`; puedes forzarlas con
   `PUBLIC_HOST` y `PRIVATE_IP`.
