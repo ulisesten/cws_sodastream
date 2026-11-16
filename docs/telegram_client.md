@@ -256,8 +256,8 @@ Errores: `400` datos inválidos, `401` token, `404` usuario/llamada,
 ## 10. Señalización y media WebRTC 1:1 (audio y vídeo)
 
 Con la llamada **aceptada**, el servidor solo releva SDP/ICE; el media va
-P2P con fallback TURN. **No hay E2EE GOST por frame todavía**: el contenido
-usa solo el cifrado del transporte (DTLS-SRTP).
+P2P con fallback TURN y va cifrado extremo a extremo con **SFrame-GOST**
+(ver §10.2 y `calls_e2ee.md`). El servidor no tiene claves ni descifra.
 
 | Método | Ruta | Uso |
 |---|---|---|
@@ -301,6 +301,19 @@ Comportamiento del cliente Android de referencia:
 - Sin media conectada en 30 s: se termina con error (revisar STUN/TURN).
 - La ventana de llamada se cierra sola 1.5 s después del estado final.
 
+### 10.2 Cifrado E2EE (SFrame-GOST)
+
+- Cada extremo genera un par efímero GOST R 34.10-2012 (TC26-256-A) por
+  llamada. La clave pública (`x||y`, 64 B) va en el SDP:
+  `a=x-gost-e2ee:v1:<base64>`.
+- Clave de frames: `HKDF-Streebog-256(salt=call_id, ikm=VKO(priv, peer_pub),
+  info="sframe-gost-v1")`, KID 1.
+- SFrame-GOST: cabecera 10 B (versión, KID, contador) + ciphertext + CMAC
+  16 B; un contexto por stream de audio/vídeo.
+- **Fail-closed**: sin atributo en el SDP remoto, la llamada termina con
+  “Sin cifrado E2EE”. Los tracks quedan deshabilitados hasta tener clave.
+- Detalle: [`calls_e2ee.md`](calls_e2ee.md).
+
 ### 10.1 Estado verificado (2026-11-16)
 
 | Escenario | Estado |
@@ -322,7 +335,10 @@ Comportamiento del cliente Android de referencia:
 
 **Pendiente:**
 
-- **E2EE GOST por frame** (SFrame-GOST). Hoy solo DTLS-SRTP.
+- **Autenticación de identidades** (X3DH-GOST con prekeys firmadas, safety
+  numbers/QR) y ratchet por mensaje. Hoy la clave es efímera por llamada,
+  sin autenticar: un servidor malicioso podría hacer MITM.
+- **Auditoría externa** de SFrame-GOST/VKO.
 - **ICE restart** para cambios de red a mitad de llamada sin volver a marcar.
 - Grupo y walkie (gateway + Janus) y CDR persistente.
 - `turns:…:5349` sigue cerrado y `stun.sodastream.fun` sin DNS. Mientras
@@ -348,7 +364,7 @@ Comportamiento del cliente Android de referencia:
 - [x] SDP/ICE se relevan solo en `accepted`; candidatos encolados hasta remoteDescription.
 - [x] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar (despliegue: `docs/turn_deploy.md`).
 - [x] Audio 1:1 y vídeo 1:1, incluido un extremo en datos móviles.
-- [ ] E2EE GOST por frame (hoy solo DTLS-SRTP).
+- [x] E2EE SFrame-GOST con clave VKO por llamada (falta autenticar la clave).
 - [ ] ICE restart ante cambio de red sin volver a marcar.
 - [x] `call_id` no se reutiliza; 409 se muestra como expirada.
 - [ ] Sin teléfono funciona; con teléfono opcional se mapea.

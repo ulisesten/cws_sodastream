@@ -7,8 +7,10 @@
 >   (P2P/TURN), aviso por WSS y Telegram, deep link `cws://call/<id>`,
 >   cliente Android (Compose + WebRTC) con permisos, mute, cámara y altavoz.
 >   Llamadas de audio y vídeo probadas con un extremo en datos móviles.
-> - **Pendiente:** E2EE GOST por frame (SFrame-GOST), grupo/Janus, walkie,
->   CDR persistente, ICE restart en el cliente y TLS GOST.
+>   **E2EE SFrame-GOST** con clave efímera VKO + HKDF-Streebog por llamada
+>   (ver `calls_e2ee.md`).
+> - **Pendiente:** autenticación de claves (X3DH/safety numbers), ratchet,
+>   grupo/Janus, walkie, CDR persistente, ICE restart y TLS GOST.
 >
 > El resto del documento describe el objetivo completo; para el contrato
 > operativo del cliente ver `telegram_client.md` §10 y `endpoints.md`.

@@ -528,6 +528,9 @@ media ni descifra. Ver `docs/telegram_client.md`.
 - `turns:…:5349` sigue cerrado y `stun.sodastream.fun` sin registro A. Usa
   `stun:turn.sodastream.fun:3478` o corrige el despliegue; `turns` en 5349
   no está disponible todavía.
+- El cliente añade al SDP `a=x-gost-e2ee:v1:<base64(x||y)>` con su clave
+  efímera; el servidor lo releva tal cual. Sin ese atributo el cliente
+  cierra la llamada (fail-closed). Detalle en `calls_e2ee.md`.
 
 Si `ice_servers` viene vacío, `data.warning` lo explica: faltan
 `STUN_URLS`/`TURN_URLS`/`TURN_SECRET` en `.env`. Despliegue en
