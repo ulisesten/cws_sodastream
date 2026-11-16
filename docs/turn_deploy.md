@@ -134,11 +134,53 @@ El rango de relay es **UDP**; no lo cierres. Si usas otro rango, cámbialo en
 ## 4. Certificado TLS
 
 `turn.sodastream.fun` necesita un certificado válido para `turns:`.
-Con Let's Encrypt (nginx en 80):
+El error `"/var/www/html does not exist"` solo significa que pasaste un
+webroot que no existe (en Fedora suele ser `/usr/share/nginx/html`).
+
+**Opción recomendada (nginx en 80):**
 
 ```bash
-certbot certonly --webroot -w /var/www/html -d turn.sodastream.fun
+sudo certbot certonly --nginx -d turn.sodastream.fun
 ```
+
+Requiere el plugin de nginx (`python3-certbot-nginx` en Debian/Ubuntu,
+`certbot-nginx` en Fedora). No usa `-w`.
+
+**Opción webroot (si prefieres no tocar nginx):**
+
+```bash
+sudo mkdir -p /var/www/letsencrypt
+```
+
+Añade un server block temporal en nginx:
+
+```nginx
+server {
+    listen 80;
+    server_name turn.sodastream.fun;
+    root /var/www/letsencrypt;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+}
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot certonly --webroot -w /var/www/letsencrypt \
+  -d turn.sodastream.fun
+```
+
+Comprueba antes que el DNS apunta al servidor y que el puerto 80 responde:
+
+```bash
+dig +short turn.sodastream.fun
+curl -I http://turn.sodastream.fun/.well-known/acme-challenge/test
+```
+
+No uses `--standalone` si nginx ya ocupa el 80. El certificado queda en
+`/etc/letsencrypt/live/turn.sodastream.fun/`.
 
 Hook de renovación (`/etc/letsencrypt/renewal-hooks/deploy/coturn.sh`):
 
