@@ -21,6 +21,23 @@ Actualizado: 2026-11-16. Complementa `docs/calls_proposal.md` y
 - Credenciales TURN temporales (coturn REST, HMAC-SHA1); STUN/TURN.
 - Lib GOST: Kuznyechik, CTR-ACPKM, CMAC, HKDF, AEAD, SFrame-GOST.
 
+## Seguridad de audio/video
+
+| Capa | Estado |
+|---|---|
+| Transporte WebRTC DTLS-SRTP | Lo pone el cliente/WebRTC; es estándar, **no GOST**. En 1:1 P2P el TURN no lo descifra. |
+| E2EE GOST por frame (SFrame-GOST) | Librería implementada (`gost_sframe`/`gost_aead`); **integración en el media del cliente pendiente**. |
+| SFU/Janus | Sin SFrame-GOST el SFU termina DTLS-SRTP y ve el media; con SFrame solo reenvía cifrado. Falta el gateway/Janus. |
+| Gestión de claves E2EE | VKO/34.10-2012 + HKDF-Streebog + sender keys: diseño; falta implementarla en el cliente. |
+| Verificación de claves | Safety number/QR: pendiente. |
+| Auditoría/constant-time | Pendiente (S-box de Kuznyechik con cache-timing). |
+| Servidor C | No toca media; solo señaliza y da TURN. |
+
+**Conclusión:** el media **no está E2EE GOST de punta a punta todavía**. Si el
+cliente usa WebRTC sin SFrame, el audio/video va cifrado con DTLS-SRTP
+(estándar), no con GOST. Para 1:1 P2P el TURN no ve el contenido; para
+grupo/SFU hace falta SFrame-GOST o el SFU descifra.
+
 ## Pendiente del lado servidor
 
 ### 1:1 (prioridad)
