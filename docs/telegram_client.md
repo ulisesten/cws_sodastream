@@ -1,8 +1,9 @@
 # Cliente: integración de llamadas + Telegram
 
 Guía para Android nativo (Kotlin+JNI), Linux y Windows (Qt+C).
-Estado actual: **puente de notificación/aceptación**; el media WebRTC
-(SDP/ICE/DTLS-SRTP, E2EE GOST) es la fase siguiente.
+Estado actual: **señalización + media 1:1 implementados**. Audio y vídeo
+funcionan por WebRTC (P2P con fallback TURN), verificado en Wi-Fi y con un
+extremo en datos móviles. E2EE GOST por frame sigue pendiente.
 
 ## 1. Resumen
 
@@ -101,7 +102,7 @@ Solicitante                         Servidor                         Receptor
     |                                  |<-- POST /accept ----------------|
     |<-- WSS call.accepted ------------|    {call_id, ip?, telefono?}    |
     |                                  |                                 |
-    | (media WebRTC: fase siguiente)   |                                 |
+    | (SDP/ICE por /calls/:id -> WSS)  |                                 |
 ```
 
 1. El solicitante crea `call_id` (nanoid) y llama:
@@ -252,10 +253,11 @@ Errores: `400` datos inválidos, `401` token, `404` usuario/llamada,
 - **Empaquetado**: MSI/portable y AppImage/deb; sin consola; auto-update
   self-hosted.
 
-## 10. Señalización WebRTC 1:1 (audio)
+## 10. Señalización y media WebRTC 1:1 (audio y vídeo)
 
-Con la llamada **aceptada**, el servidor solo releva SDP/ICE; el media es
-P2P (o TURN) y E2EE en el cliente.
+Con la llamada **aceptada**, el servidor solo releva SDP/ICE; el media va
+P2P con fallback TURN. **No hay E2EE GOST por frame todavía**: el contenido
+usa solo el cifrado del transporte (DTLS-SRTP).
 
 | Método | Ruta | Uso |
 |---|---|---|
@@ -270,38 +272,62 @@ P2P (o TURN) y E2EE en el cliente.
   - `call.ice`: `{call_id, from_public, candidate, sdpMid, sdpMLineIndex, usernameFragment}`
 - `GET /ice` devuelve `ice_servers` con STUN y TURN (usuario/credencial
   temporales; expira). Refresca antes de `expires_in`.
-- Si `ice_servers` viene vacío o con `warning`, el servidor no tiene
-  STUN/TURN configurado. No hardcodees un STUN público: muestra el aviso y,
-  si aplica, usa solo candidatos host (LAN). Sin TURN no hay fallback para
-  NAT simétrico.
 - `GET /calls/:call_id` devuelve `estado`, `role`, `peer_public`,
   `peer_name` y `peer_ip` (informativo; la ruta real la deciden los
   candidatos ICE).
 
-Secuencia:
+Secuencia (audio, o audio+vídeo si `tipo=video`):
+
 ```
 caller: notify -> accept (callee) -> GET /ice
-caller: createOffer -> POST /sdp  -> callee recibe call.sdp
-callee: createAnswer -> POST /sdp -> caller recibe call.sdp
+caller: createOffer (audio [+video]) -> POST /sdp -> callee recibe call.sdp
+callee: setRemote(offer) -> createAnswer -> POST /sdp -> caller recibe call.sdp
 ambos: onicecandidate -> POST /ice -> el otro recibe call.ice
-media P2P/TURN; SFrame-GOST encima
+media P2P/TURN (DTLS-SRTP)
 ```
-- En el cliente, encola candidatos hasta tener `remoteDescription`.
+
+- Encola candidatos y offers hasta tener `PeerConnection`/`remoteDescription`.
 - No uses `peer_ip` como dirección de media; usa ICE/STUN/TURN.
 - El servidor no abre RTP ni descifra.
 
-## 11. Media (fase siguiente)
+Comportamiento del cliente Android de referencia:
 
-Este puente **no** establece audio/video. La fase WebRTC usará:
-- `call.accepted` como señal para iniciar SDP/ICE.
-- `call_id` para correlacionar la sesión.
-- ICE/STUN/TURN para la ruta; **no** uses la IP del evento como dirección de
-  media: NAT, puertos y candidatos ICE son necesarios.
-- E2EE GOST (SFrame-GOST) y Janus interno para grupo/walkie. La lib
-  `c_gost_encryption` ya implementa Kuznyechik, AEAD y SFrame-GOST; falta
-  integrarlo en el cliente WebRTC y auditarlo.
-- El servidor ya expone ICE/TURN y relay SDP/ICE; el cliente debe conectar
-  `RTCPeerConnection` y aplicar SFrame-GOST a los frames.
+- `RECORD_AUDIO` al aceptar; `CAMERA` para vídeo. Si se rechaza la cámara,
+  se puede continuar en solo audio.
+- Mute = `audioTrack.enabled=false`; apagar cámara detiene la captura.
+- Colgar = `POST /end` + cerrar el `PeerConnection`.
+- Corte: si ICE pasa a `DISCONNECTED`/`FAILED` y no vuelve a `CONNECTED` en
+  8 s, se envía `/end` y se muestra “Se perdió la conexión”.
+- Sin media conectada en 30 s: se termina con error (revisar STUN/TURN).
+- La ventana de llamada se cierra sola 1.5 s después del estado final.
+
+### 10.1 Estado verificado (2026-11-16)
+
+| Escenario | Estado |
+|---|---|
+| Audio 1:1, Wi-Fi ↔ Wi-Fi | ✅ |
+| Audio 1:1, Wi-Fi ↔ datos móviles | ✅ |
+| Vídeo 1:1 con un extremo en datos móviles | ✅ |
+| Relay TURN público con credenciales temporales | ✅ (UDP y TCP 3478) |
+| Rechazar / colgar / corte de red | ✅ (mensajes distintos) |
+
+## 11. Estado del media y pendientes
+
+**Implementado:**
+
+- Media 1:1 de audio y vídeo sobre la señalización de `/api/v1/calls`.
+- `GET /ice` con STUN + TURN autenticado y relay público.
+- Cliente Android: permisos, mute, cámara, altavoz, preview arrastrable,
+  controles que se ocultan, cierre automático y motivos de fin.
+
+**Pendiente:**
+
+- **E2EE GOST por frame** (SFrame-GOST). Hoy solo DTLS-SRTP.
+- **ICE restart** para cambios de red a mitad de llamada sin volver a marcar.
+- Grupo y walkie (gateway + Janus) y CDR persistente.
+- `turns:…:5349` sigue cerrado y `stun.sodastream.fun` sin DNS. Mientras
+  tanto, anunciar `turn:…:3478?transport=tcp` o abrir 5349.
+- iOS/web.
 
 ## 12. Seguridad
 
@@ -315,15 +341,18 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
 
 ## 13. Checklist de aceptación
 
-- [ ] App abierta + WSS: `call.incoming` sin Telegram/FCM.
+- [x] App abierta + WSS: `call.incoming` sin Telegram/FCM.
 - [ ] WSS caído: sin Telegram no hay ring; `/pending` sigue disponible.
 - [ ] Telegram vinculado: aviso con `cws://call/<id>` y deep link abre la app.
-- [ ] Aceptar/rechazar/terminar actualizan ambos lados.
-- [ ] SDP/ICE se relevan solo en `accepted`; candidatos encolados hasta remoteDescription.
-- [ ] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar (despliegue: `docs/turn_deploy.md`).
-- [ ] `call_id` no se reutiliza; 409 se muestra como expirada.
+- [x] Aceptar/rechazar/terminar actualizan ambos lados.
+- [x] SDP/ICE se relevan solo en `accepted`; candidatos encolados hasta remoteDescription.
+- [x] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar (despliegue: `docs/turn_deploy.md`).
+- [x] Audio 1:1 y vídeo 1:1, incluido un extremo en datos móviles.
+- [ ] E2EE GOST por frame (hoy solo DTLS-SRTP).
+- [ ] ICE restart ante cambio de red sin volver a marcar.
+- [x] `call_id` no se reutiliza; 409 se muestra como expirada.
 - [ ] Sin teléfono funciona; con teléfono opcional se mapea.
-- [ ] `usu_id` interno nunca aparece en requests/respuestas/logs.
+- [x] `usu_id` interno nunca aparece en requests/respuestas/logs.
 - [ ] Android: APK, foreground service, deep link, CA/pinning.
 - [ ] Qt: WSS GOST, tray, deep link, CA/pinning.
 - [ ] Pruebas de red: WS drop/reconnect, token expirado, app en background,

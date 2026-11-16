@@ -297,6 +297,27 @@ TURN_TTL_SECONDS=3600
 
 ## 6. Verificación
 
+**Estado verificado (2026-11-16):**
+
+```
+Allocate sin credenciales        → 401 (autenticación activa)
+Allocate con credenciales (UDP)  → relay 189.157.243.163:<puerto>, lifetime 600 s
+Allocate con credenciales (TCP)  → relay 189.157.243.163:<puerto>, lifetime 600 s
+realm                            → sodastream.fun
+software                         → Coturn-4.6.3 'Gorst'
+```
+
+- ✅ `turn:turn.sodastream.fun:3478?transport=udp` y `...?transport=tcp`.
+- ❌ `turns:turn.sodastream.fun:5349` (puerto cerrado). Abre 5349 o quita esa
+  URL de `TURN_URLS` y anuncia el TCP 3478.
+- ❌ `stun.sodastream.fun` sin registro A. Usa
+  `STUN_URLS=stun:turn.sodastream.fun:3478` mientras no exista el DNS.
+- ⚠️ `external-ip` debe estar en el archivo que **realmente** usa el unit:
+  comprueba `ps -ef | grep '[t]urnserver'` (`-c /etc/coturn/turnserver.conf`
+  en Fedora/RHEL). Si el relay sale `192.168.x.x`, esa línea no está activa.
+
+Comandos básicos:
+
 ```bash
 dig +short stun.sodastream.fun
 dig +short turn.sodastream.fun

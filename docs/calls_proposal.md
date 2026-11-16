@@ -1,6 +1,17 @@
 # Propuesta: llamadas de voz/video y modo walkie-talkie
 
-> Estado: **propuesta técnica** (sin implementación). Fecha: 2026-11-15.
+> Estado: **implementación parcial** (actualizado 2026-11-16).
+>
+> - **Hecho y verificado:** señalización 1:1 (`/calls/:id`, SDP/ICE relay),
+>   ICE/TURN con credenciales temporales, media 1:1 **audio y vídeo**
+>   (P2P/TURN), aviso por WSS y Telegram, deep link `cws://call/<id>`,
+>   cliente Android (Compose + WebRTC) con permisos, mute, cámara y altavoz.
+>   Llamadas de audio y vídeo probadas con un extremo en datos móviles.
+> - **Pendiente:** E2EE GOST por frame (SFrame-GOST), grupo/Janus, walkie,
+>   CDR persistente, ICE restart en el cliente y TLS GOST.
+>
+> El resto del documento describe el objetivo completo; para el contrato
+> operativo del cliente ver `telegram_client.md` §10 y `endpoints.md`.
 
 ## 0. Resumen ejecutivo
 

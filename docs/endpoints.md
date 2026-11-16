@@ -518,6 +518,17 @@ la señalización WebRTC.
 SDP/ICE solo con la llamada `accepted` (`409` si no). El servidor no maneja
 media ni descifra. Ver `docs/telegram_client.md`.
 
+**Estado verificado (2026-11-16):**
+
+- Audio 1:1 **Wi-Fi ↔ Wi-Fi**: funciona.
+- Audio 1:1 **Wi-Fi ↔ datos móviles**: funciona (ruta P2P o relay TURN).
+- **Vídeo 1:1** con un extremo en datos móviles: funciona.
+- `/calls/:id/ice` devuelve STUN + TURN autenticado (usuario y credencial
+  temporales) con relay **público**; probado `turn:` en **UDP y TCP 3478**.
+- `turns:…:5349` sigue cerrado y `stun.sodastream.fun` sin registro A. Usa
+  `stun:turn.sodastream.fun:3478` o corrige el despliegue; `turns` en 5349
+  no está disponible todavía.
+
 Si `ice_servers` viene vacío, `data.warning` lo explica: faltan
 `STUN_URLS`/`TURN_URLS`/`TURN_SECRET` en `.env`. Despliegue en
 `docs/turn_deploy.md`. Sin TURN solo funcionan rutas
