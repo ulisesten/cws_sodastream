@@ -649,21 +649,21 @@ con chat).
 Métricas por llamada/participante: pérdida, RTT, jitter, bitrate, resolución,
 FPS, FEC, térmica/batería. **Sin contenido**. Retención corta.
 
-### `opr_integraciones_externas` (mapeo, sin contenido)
+### `opr_llamadas_integracion_externa` (mapeo, sin contenido)
 | Columna | Tipo | Notas |
 |---|---|---|
-| `ine_id` | INT IDENTITY PK | |
-| `ine_id_usuario` | INT | interno |
-| `ine_tipo` | TINYINT | 0 Telegram, 1 teléfono, 2 IP, 3 ID externo |
-| `ine_valor` | VARCHAR(255) | chat_id, teléfono, IP o ID |
-| `ine_activo` | BIT | |
-| `ine_creado` | DATETIME2 | |
+| `lie_id` | INT IDENTITY PK | |
+| `lie_id_usuario` | INT | interno |
+| `lie_tipo` | TINYINT | 0 Telegram, 1 teléfono, 2 IP, 3 ID externo |
+| `lie_valor` | VARCHAR(255) | chat_id, teléfono, IP o ID |
+| `lie_activo` | BIT | |
+| `lie_creado` | DATETIME2 | |
 
-Índice único (`ine_tipo`, `ine_valor`). Sin contenido de llamadas.
+Índice único (`lie_tipo`, `lie_valor`). Sin contenido de llamadas.
 
 SPs: `procLlamadasProc` (crear/actualizar/terminar), `procLlamadasCons`
 (estado/historial), `procLlamadasParticipantesProc/Cons`,
-`procIntegracionesProc/Cons`. El usuario aplica los SQL como en
+`procLlamadasIntegracionExternaProc/Cons`. El usuario aplica los SQL como en
 chat/stickers.
 
 ## 11. Configuración (.env, borrador)

@@ -542,7 +542,7 @@ Headers: `X-Integration-Timestamp`, `X-Integration-Nonce`,
 
 > Sin FCM/APNs: con la app abierta el aviso va por WSS; con la app cerrada el
 > usuario recibe Telegram y toca el deep link. Requiere aplicar
-> `db_sodastream/propuesta_integraciones.sql` con un usuario con permisos DDL.
+> `db_sodastream/video_llamadas_integraciones.sql` con un usuario con permisos DDL.
 > Guía de cliente: `docs/telegram_client.md`.
 
 ---

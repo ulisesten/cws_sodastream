@@ -19,7 +19,7 @@ Implementación en `src/integrations/telegram/` y
    El servidor necesita salida HTTPS a `api.telegram.org`.
 1. Crear un bot con **@BotFather** y obtener `TELEGRAM_BOT_TOKEN` y
    `TELEGRAM_BOT_USERNAME`.
-2. Aplicar `db_sodastream/propuesta_integraciones.sql` con un usuario con permiso
+2. Aplicar `db_sodastream/video_llamadas_integraciones.sql` con un usuario con permiso
    `CREATE TABLE`/`CREATE PROCEDURE` (el usuario de la app normalmente no lo
    tiene).
 3. Configurar `.env` (el token y el username son del bot):
@@ -147,12 +147,12 @@ desde una PBX/CRM cuando ya existe el mapeo (creado por la app al llamar/aceptar
 - El estado de llamada es efímero: no sobrevive a un reinicio del servidor.
 
 ## Tablas/SPs
-- `opr_telegram_codigos`
-- `opr_telegram_vinculos`
-- `opr_integraciones_externas`
-- `procTelegramProc`, `procTelegramCons`
-- `procIntegracionesProc`, `procIntegracionesCons`
+- `opr_llamadas_integracion_codigos`
+- `opr_llamadas_integracion_vinculos`
+- `opr_llamadas_integracion_externa`
+- `procLlamadasIntegracionVinculosProc`, `procLlamadasIntegracionVinculosCons`
+- `procLlamadasIntegracionExternaProc`, `procLlamadasIntegracionExternaCons`
 
-Ver `db_sodastream/propuesta_integraciones.sql`.
+Ver `db_sodastream/video_llamadas_integraciones.sql`.
 
 Implementación del cliente (Android/Qt): ver `docs/telegram_client.md`.

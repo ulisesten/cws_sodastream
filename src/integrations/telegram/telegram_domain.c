@@ -100,14 +100,14 @@ int telegram_domain_create_code(int64_t usu_id, const char* code, int ttl_min) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_TG_CODIGO } };
-    p[n++] = (sql_param_t){ "tgc_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
-    p[n++] = (sql_param_t){ "tgc_codigo", SQL_PT_STRING, { .as_string = code } };
-    p[n++] = (sql_param_t){ "tgc_ttl_min", SQL_PT_INT,
+    p[n++] = (sql_param_t){ "lic_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
+    p[n++] = (sql_param_t){ "lic_codigo", SQL_PT_STRING, { .as_string = code } };
+    p[n++] = (sql_param_t){ "lic_ttl_min", SQL_PT_INT,
                             { .as_int = ttl_min > 0 ? ttl_min : 15 } };
 
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procTelegramProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionVinculosProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     sql_result_free(&out);
     return ok;
@@ -122,16 +122,16 @@ int telegram_domain_consume_code(const char* code, int64_t chat_id,
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_TG_VINCULAR } };
-    p[n++] = (sql_param_t){ "tgc_codigo", SQL_PT_STRING, { .as_string = code } };
-    p[n++] = (sql_param_t){ "tgv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
-    p[n++] = (sql_param_t){ "tgv_usuario_tg", username ? SQL_PT_STRING : SQL_PT_NULL,
+    p[n++] = (sql_param_t){ "lic_codigo", SQL_PT_STRING, { .as_string = code } };
+    p[n++] = (sql_param_t){ "liv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
+    p[n++] = (sql_param_t){ "liv_usuario_tg", username ? SQL_PT_STRING : SQL_PT_NULL,
                             { .as_string = username } };
-    p[n++] = (sql_param_t){ "tgv_nombre_tg", name ? SQL_PT_STRING : SQL_PT_NULL,
+    p[n++] = (sql_param_t){ "liv_nombre_tg", name ? SQL_PT_STRING : SQL_PT_NULL,
                             { .as_string = name } };
 
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procTelegramProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionVinculosProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     if (ok && usu_id_out)
         *usu_id_out = row_i64(&out, 0, "usu_id", 0);
@@ -142,20 +142,20 @@ int telegram_domain_consume_code(const char* code, int64_t chat_id,
 static int get_link(sql_param_t* p, size_t n, telegram_link_t* out) {
     sql_result_t outres;
     memset(&outres, 0, sizeof(outres));
-    int rc = run_sp("procTelegramCons", p, n, &outres);
+    int rc = run_sp("procLlamadasIntegracionVinculosCons", p, n, &outres);
     int ok = 0;
     if (rc == 0 && outres.nrows > 0) {
         const char* s = row_str(&outres, 0, "success");
         if (!(s && strcmp(s, "false") == 0)) {
             if (out) {
                 memset(out, 0, sizeof(*out));
-                out->usu_id = row_i64(&outres, 0, "tgv_id_usuario", 0);
-                out->chat_id = row_i64(&outres, 0, "tgv_chat_id", 0);
+                out->usu_id = row_i64(&outres, 0, "liv_id_usuario", 0);
+                out->chat_id = row_i64(&outres, 0, "liv_chat_id", 0);
                 copy_str(out->username, sizeof(out->username),
-                         row_str(&outres, 0, "tgv_usuario_tg"));
+                         row_str(&outres, 0, "liv_usuario_tg"));
                 copy_str(out->name, sizeof(out->name),
-                         row_str(&outres, 0, "tgv_nombre_tg"));
-                out->active = (int)row_i64(&outres, 0, "tgv_activo", 0);
+                         row_str(&outres, 0, "liv_nombre_tg"));
+                out->active = (int)row_i64(&outres, 0, "liv_activo", 0);
             }
             ok = 1;
         }
@@ -169,7 +169,7 @@ int telegram_domain_get_link(int64_t usu_id, telegram_link_t* out) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = CONS_TG_LINK_USUARIO } };
-    p[n++] = (sql_param_t){ "tgc_id_usuario", SQL_PT_INT,
+    p[n++] = (sql_param_t){ "lic_id_usuario", SQL_PT_INT,
                             { .as_int = usu_id } };
     return get_link(p, n, out);
 }
@@ -179,7 +179,7 @@ int telegram_domain_get_link_by_chat(int64_t chat_id, telegram_link_t* out) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = CONS_TG_LINK_CHAT } };
-    p[n++] = (sql_param_t){ "tgv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
+    p[n++] = (sql_param_t){ "liv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
     return get_link(p, n, out);
 }
 
@@ -190,10 +190,10 @@ int telegram_domain_user_public(int64_t usu_id, char* public_out,
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = CONS_TG_USER_PUBLIC } };
-    p[n++] = (sql_param_t){ "tgc_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
+    p[n++] = (sql_param_t){ "lic_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procTelegramCons", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionVinculosCons", p, n, &out);
     int ok = 0;
     if (rc == 0 && out.nrows > 0) {
         copy_str(public_out, public_cap, row_str(&out, 0, "usu_id_public"));
@@ -209,10 +209,10 @@ int telegram_domain_unlink_user(int64_t usu_id) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_TG_UNLINK } };
-    p[n++] = (sql_param_t){ "tgc_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
+    p[n++] = (sql_param_t){ "lic_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procTelegramProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionVinculosProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     sql_result_free(&out);
     return ok;
@@ -223,10 +223,10 @@ int telegram_domain_unlink_chat(int64_t chat_id) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_TG_UNLINK } };
-    p[n++] = (sql_param_t){ "tgv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
+    p[n++] = (sql_param_t){ "liv_chat_id", SQL_PT_INT, { .as_int = chat_id } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procTelegramProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionVinculosProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     sql_result_free(&out);
     return ok;
@@ -239,13 +239,13 @@ int telegram_domain_external_link(int64_t usu_id, int type,
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_INT_LINK } };
-    p[n++] = (sql_param_t){ "ine_id_usuario", SQL_PT_INT,
+    p[n++] = (sql_param_t){ "lie_id_usuario", SQL_PT_INT,
                             { .as_int = usu_id } };
-    p[n++] = (sql_param_t){ "ine_tipo", SQL_PT_INT, { .as_int = type } };
-    p[n++] = (sql_param_t){ "ine_valor", SQL_PT_STRING, { .as_string = value } };
+    p[n++] = (sql_param_t){ "lie_tipo", SQL_PT_INT, { .as_int = type } };
+    p[n++] = (sql_param_t){ "lie_valor", SQL_PT_STRING, { .as_string = value } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procIntegracionesProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionExternaProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     sql_result_free(&out);
     return ok;
@@ -258,15 +258,15 @@ int telegram_domain_external_unlink(int64_t usu_id, int type,
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,
                             { .as_int = PROC_INT_UNLINK } };
-    p[n++] = (sql_param_t){ "ine_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
-    p[n++] = (sql_param_t){ "ine_tipo", type > 0 ? SQL_PT_INT : SQL_PT_NULL,
+    p[n++] = (sql_param_t){ "lie_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
+    p[n++] = (sql_param_t){ "lie_tipo", type > 0 ? SQL_PT_INT : SQL_PT_NULL,
                             { .as_int = type } };
-    p[n++] = (sql_param_t){ "ine_valor",
+    p[n++] = (sql_param_t){ "lie_valor",
                             (value && *value) ? SQL_PT_STRING : SQL_PT_NULL,
                             { .as_string = value } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procIntegracionesProc", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionExternaProc", p, n, &out);
     int ok = (rc == 0) && row_ok(&out);
     sql_result_free(&out);
     return ok;
@@ -281,17 +281,17 @@ int telegram_domain_external_lookup(int type, const char* value,
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = CONS_INT_LOOKUP } };
-    p[n++] = (sql_param_t){ "ine_tipo", SQL_PT_INT, { .as_int = type } };
-    p[n++] = (sql_param_t){ "ine_valor", SQL_PT_STRING, { .as_string = value } };
+    p[n++] = (sql_param_t){ "lie_tipo", SQL_PT_INT, { .as_int = type } };
+    p[n++] = (sql_param_t){ "lie_valor", SQL_PT_STRING, { .as_string = value } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
-    int rc = run_sp("procIntegracionesCons", p, n, &out);
+    int rc = run_sp("procLlamadasIntegracionExternaCons", p, n, &out);
     int ok = 0;
     if (rc == 0 && out.nrows > 0) {
         const char* s = row_str(&out, 0, "success");
         if (!(s && strcmp(s, "false") == 0)) {
             if (usu_id_out)
-                *usu_id_out = row_i64(&out, 0, "ine_id_usuario", 0);
+                *usu_id_out = row_i64(&out, 0, "lie_id_usuario", 0);
             copy_str(public_out, public_cap,
                      row_str(&out, 0, "usu_id_public"));
             copy_str(name_out, name_cap, row_str(&out, 0, "usu_nombre"));
