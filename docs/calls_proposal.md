@@ -606,7 +606,7 @@ Content-Type: application/json
     "ice_servers": [
       { "urls": ["stun:stun.sodastream.fun:3478"] },
       {
-        "urls": ["turns:turn.sodastream.fun:443?transport=tcp"],
+        "urls": ["turns:turn.sodastream.fun:5349?transport=tcp"],
         "username": "1763251200:usuario",
         "credential": "base64-hmac"
       }

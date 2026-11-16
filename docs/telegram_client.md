@@ -320,7 +320,7 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
 - [ ] Telegram vinculado: aviso con `cws://call/<id>` y deep link abre la app.
 - [ ] Aceptar/rechazar/terminar actualizan ambos lados.
 - [ ] SDP/ICE se relevan solo en `accepted`; candidatos encolados hasta remoteDescription.
-- [ ] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar.
+- [ ] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar (despliegue: `docs/turn_deploy.md`).
 - [ ] `call_id` no se reutiliza; 409 se muestra como expirada.
 - [ ] Sin teléfono funciona; con teléfono opcional se mapea.
 - [ ] `usu_id` interno nunca aparece en requests/respuestas/logs.

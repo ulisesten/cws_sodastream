@@ -519,7 +519,8 @@ SDP/ICE solo con la llamada `accepted` (`409` si no). El servidor no maneja
 media ni descifra. Ver `docs/telegram_client.md`.
 
 Si `ice_servers` viene vacío, `data.warning` lo explica: faltan
-`STUN_URLS`/`TURN_URLS`/`TURN_SECRET` en `.env`. Sin TURN solo funcionan rutas
+`STUN_URLS`/`TURN_URLS`/`TURN_SECRET` en `.env`. Despliegue en
+`docs/turn_deploy.md`. Sin TURN solo funcionan rutas
 P2P directas/LAN; para NAT simétrico hace falta TURN. El `TURN_SECRET` debe
 coincidir con `static-auth-secret` de coturn.
 
@@ -660,7 +661,7 @@ EXTERNAL_API_SECRET=<secreto-largo-aleatorio>
 
 # Llamadas / ICE-TURN
 STUN_URLS=stun:stun.sodastream.fun:3478
-TURN_URLS=turn:turn.sodastream.fun:3478?transport=udp,turns:turn.sodastream.fun:443?transport=tcp
+TURN_URLS=turn:turn.sodastream.fun:3478?transport=udp,turns:turn.sodastream.fun:5349?transport=tcp
 TURN_SECRET=<secreto-de-coturn>
 TURN_TTL_SECONDS=3600
 ```
