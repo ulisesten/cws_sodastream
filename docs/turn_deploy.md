@@ -14,6 +14,52 @@ turn.sodastream.fun  A  189.157.243.163
 
 No hace falta AAAA salvo que coturn escuche IPv6 y el firewall esté abierto.
 
+## 1.1 Instalación y servicio
+
+```bash
+# Debian/Ubuntu
+sudo apt update && sudo apt install coturn
+
+# Fedora/RHEL
+sudo dnf install coturn
+```
+
+Habilita el demonio:
+
+```bash
+# Debian/Ubuntu
+sudo sed -i 's/^#\?TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/default/coturn
+
+# Fedora/RHEL
+sudo sed -i 's/^TURNSERVER_ENABLED=.*/TURNSERVER_ENABLED=1/' /etc/sysconfig/turnserver
+
+sudo systemctl enable --now coturn
+sudo systemctl status coturn --no-pager
+```
+
+Si el paquete usa otro unit (`turnserver`), comprueba con
+`systemctl list-unit-files | grep -i turn`.
+
+### Permisos de certificados
+
+coturn corre como `turnserver` y Let's Encrypt deja `live/` y `archive/` en
+`root:root` con permisos restrictivos. Opciones:
+
+```bash
+# ACL (respeta symlinks de live/)
+sudo setfacl -R -m u:turnserver:rX /etc/letsencrypt/live /etc/letsencrypt/archive
+```
+
+o copia los certificados a `/etc/coturn/certs/` con un hook de renovación y
+permisos `turnserver:turnserver` 640, y apunta `cert`/`pkey` ahí.
+
+En Fedora/RHEL con SELinux, si coturn no puede leer los archivos:
+
+```bash
+sudo semanage fcontext -a -t cert_t '/etc/coturn(/.*)?'
+sudo restorecon -Rv /etc/coturn
+```
+
 ## 2. coturn (`/etc/turnserver.conf`)
 
 ```ini
@@ -139,8 +185,16 @@ curl -H "Authorization: Bearer $TOKEN" \
 Debe devolver `ice_servers` con `stun:` en 3478 y `turns:` en **5349**, sin
 `warning`.
 
-Prueba desde una red externa (no LAN) y con `turns` (TLS); en
-`chrome://webrtc-internals` o `about:webrtc` verifica que se elige relay
+Prueba desde una red externa (no LAN). Con `turnutils_uclient` puedes validar
+las credenciales que devuelve `/calls/:id/ice`:
+
+```bash
+turnutils_uclient -v -u "<username>" -w "<credential>" -p 3478 turn.sodastream.fun
+```
+
+Para TLS en 5349 revisa `turnutils_uclient -h` (la opción de TLS varía según
+la versión de coturn); también puedes verificarlo en
+`chrome://webrtc-internals` o `about:webrtc` y confirmar que se elige relay
 cuando la red lo requiere.
 
 ## 7. Problemas típicos
