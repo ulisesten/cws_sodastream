@@ -70,7 +70,9 @@ tls-listening-port=5349
 use-auth-secret
 static-auth-secret=<mismo TURN_SECRET del .env>
 realm=sodastream.fun
-external-ip=189.157.243.163
+# Detrás de NAT: pública/privada. Si el host tiene la IP pública directa,
+# basta con la pública.
+external-ip=<IP-pública>/<IP-privada>
 
 fingerprint
 no-multicast-peers
@@ -106,6 +108,66 @@ max-port=49200
   ACLs y un hook de renovación.
 - `static-auth-secret` debe ser **idéntico** a `TURN_SECRET` del API.
 - `min-port`/`max-port` deben coincidir con el firewall.
+
+### 2.1 IP pública dinámica
+
+`external-ip` **no acepta nombres DNS**: coturn exige una IP numérica. Si tu
+conexión tiene IP dinámica, un valor fijo deja de servir en cuanto cambia y
+los clientes reciben un relay inalcanzable (`192.168.x.x`).
+
+Solución: un script + timer que resuelve el DDNS, reescribe la línea y
+reinicia coturn **solo cuando la IP cambia**:
+
+```bash
+sudo install -m 755 scripts/coturn-external-ip.sh /usr/local/sbin/coturn-external-ip.sh
+sudo /usr/local/sbin/coturn-external-ip.sh
+```
+
+`/etc/systemd/system/coturn-external-ip.service`:
+
+```ini
+[Unit]
+Description=Sincroniza external-ip de coturn con la IP pública
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/coturn-external-ip.sh
+```
+
+`/etc/systemd/system/coturn-external-ip.timer`:
+
+```ini
+[Unit]
+Description=Comprueba la IP pública de coturn cada 5 minutos
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now coturn-external-ip.timer
+systemctl list-timers coturn-external-ip.timer
+```
+
+Notas:
+
+- El script usa `turn.sodastream.fun` (tu DDNS) para obtener la pública y
+  autodetecta la privada con `ip route get 1.1.1.1`; puedes forzarlas con
+  `PUBLIC_HOST` y `PRIVATE_IP`.
+- Reiniciar coturn **corta las asignaciones activas** (llamadas en curso). El
+  timer solo reinicia cuando la IP cambió, no en cada ejecución.
+- Si el router hace CGNAT (sin IP pública real), TURN no puede funcionar en
+  ese host: usa un VPS con IP fija.
+- Alternativa más simple y estable: mover coturn a un VPS con IP estática y
+  dejar `external-ip=<IP-pública>` fija.
 
 ## 3. Firewall
 
