@@ -116,16 +116,14 @@ conexión tiene IP dinámica, un valor fijo deja de servir en cuanto cambia y
 los clientes reciben un relay inalcanzable (`192.168.x.x`).
 
 Solución: un script + timer que resuelve el DDNS, reescribe la línea y
-reinicia coturn **solo cuando la IP cambia**:
+reinicia coturn **solo cuando la IP cambia**.
 
 ```bash
+# 1. Instala el script
 sudo install -m 755 scripts/coturn-external-ip.sh /usr/local/sbin/coturn-external-ip.sh
-sudo /usr/local/sbin/coturn-external-ip.sh
-```
 
-`/etc/systemd/system/coturn-external-ip.service`:
-
-```ini
+# 2. Crea el servicio oneshot
+sudo tee /etc/systemd/system/coturn-external-ip.service >/dev/null <<'EOF'
 [Unit]
 Description=Sincroniza external-ip de coturn con la IP pública
 After=network-online.target
@@ -134,34 +132,57 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/coturn-external-ip.sh
-```
+EOF
 
-`/etc/systemd/system/coturn-external-ip.timer`:
-
-```ini
+# 3. Crea el timer (cada minuto)
+sudo tee /etc/systemd/system/coturn-external-ip.timer >/dev/null <<'EOF'
 [Unit]
-Description=Comprueba la IP pública de coturn cada 5 minutos
+Description=Comprueba la IP pública de coturn cada minuto
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
-AccuracySec=30s
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
 
 [Install]
 WantedBy=timers.target
-```
+EOF
 
-```bash
+# 4. Activa y aplica ya
 sudo systemctl daemon-reload
 sudo systemctl enable --now coturn-external-ip.timer
+sudo /usr/local/sbin/coturn-external-ip.sh
 systemctl list-timers coturn-external-ip.timer
 ```
+
+> Si `enable` responde `Unit file ... does not exist`, faltó el paso 2 o 3:
+> los archivos deben existir en `/etc/systemd/system/` antes de
+> `daemon-reload`.
+
+### Arranque tras apagón
+
+Para que coturn arranque ya con la IP correcta, ejecuta el script **antes**
+del servicio, sin reiniciarlo (`--no-restart`):
+
+```bash
+sudo mkdir -p /etc/systemd/system/coturn.service.d
+sudo tee /etc/systemd/system/coturn.service.d/external-ip.conf >/dev/null <<'EOF'
+[Service]
+ExecStartPre=/usr/local/sbin/coturn-external-ip.sh --no-restart
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart coturn
+```
+
+Si tu unit se llama `turnserver.service`, usa
+`/etc/systemd/system/turnserver.service.d/external-ip.conf`.
 
 Notas:
 
 - El script usa `turn.sodastream.fun` (tu DDNS) para obtener la pública y
   autodetecta la privada con `ip route get 1.1.1.1`; puedes forzarlas con
   `PUBLIC_HOST` y `PRIVATE_IP`.
+- Funciona con `dig` o, si no está instalado, con `getent ahostsv4`.
 - Reiniciar coturn **corta las asignaciones activas** (llamadas en curso). El
   timer solo reinicia cuando la IP cambió, no en cada ejecución.
 - Si el router hace CGNAT (sin IP pública real), TURN no puede funcionar en
