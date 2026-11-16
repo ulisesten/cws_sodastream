@@ -259,8 +259,9 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
 - `call_id` para correlacionar la sesión.
 - ICE/STUN/TURN para la ruta; **no** uses la IP del evento como dirección de
   media: NAT, puertos y candidatos ICE son necesarios.
-- E2EE GOST (SFrame-GOST) y Janus interno para grupo/walkie, según la
-  propuesta.
+- E2EE GOST (SFrame-GOST) y Janus interno para grupo/walkie. La lib
+  `c_gost_encryption` ya implementa Kuznyechik, AEAD y SFrame-GOST; falta
+  integrarlo en el cliente y auditarlo.
 
 ## 11. Seguridad
 

@@ -71,7 +71,7 @@ térmicos/de batería y apagado de pantalla en llamadas de audio.
   transporta media ni contenido.
 
 ### Puntos abiertos (detalle en §15)
-1. Perfil GOST: implementar Kuznyechik/AEAD/HKDF/constant-time y auditoría.
+1. Perfil GOST: auditoría/constant-time/benchmarks de Kuznyechik/AEAD/HKDF.
 2. Aceptación de la frontera DTLS-SRTP estándar + E2EE GOST.
 3. Gateway C ↔ Janus: API/eventos/HA/backpressure.
 4. Sender keys: epoch/distribución/rotación/multi-dispositivo.
@@ -206,22 +206,24 @@ térmicos/de batería y apagado de pantalla en llamadas de audio.
 | Metadatos | Minimización, retención corta, sin contenido, cifrado en reposo |
 
 ### 4.2 E2EE
-> **Estado real de `c_gost_encryption`**: soporta Streebog-256/512,
+> **Estado actual de `c_gost_encryption`**: implementa Streebog-256/512,
 > HMAC-Streebog, PBKDF2, GOST R 34.10-2012 (firma), VKO
-> (R 50.1.113-2016), curvas 2012 y **Magma** (GOST 28147-89) con
-> gamma/CFB/MAC de 32 bits. **No** trae Kuznyechik (GOST R 34.12-2015),
-> CMAC, AEAD, HKDF ni garantías constant-time. Ver §16.3.
+> (R 50.1.113-2016), curvas 2012, Magma (GOST 28147-89) y, desde
+> `b436423`, **Kuznyechik** (GOST R 34.12-2015), **CTR-ACPKM + CMAC**
+> (GOST R 34.13-2015), **HKDF-Streebog**, **AEAD** y **SFrame-GOST**.
+> Pendiente: auditoría externa, garantías constant-time, benchmarks en
+> Android/Windows e integración probada desde el cliente. Ver §16.3.
 
 - **1:1**: X3DH adaptado a GOST:
   - identidades y prekeys firmadas con **GOST R 34.10-2012**;
   - DH con **VKO** (R 50.1.113-2016) en curvas TC26;
-  - KDF **HKDF-Streebog** (implementar RFC 5869 sobre HMAC-Streebog);
+  - KDF **HKDF-Streebog** (implementado sobre HMAC-Streebog);
   - Double Ratchet con HMAC-Streebog y VKO; PFS y post-compromise.
 - **Frame crypto**: perfil **SFrame-GOST** (cabecera con KID/contador + AEAD
   propio; no interoperable con SFrame estándar, todos los clientes son
   propios):
-  - **Objetivo (decisión GOST-first)**: **Kuznyechik-CTR-ACPKM + CMAC**
-    (GOST R 34.12/34.13-2015), a implementar con vectores de prueba. **Sin
+  - **Implementado (decisión GOST-first)**: **Kuznyechik-CTR-ACPKM + CMAC**
+    (GOST R 34.12/34.13-2015), con vectores de prueba. **Sin
     AES-GCM/ChaCha20** para contenido.
   - **Fallback temporal**: **Magma-gamma + HMAC-Streebog-256**
     (Encrypt-then-MAC) si el rendimiento de Kuznyechik en software no alcanza
@@ -762,7 +764,7 @@ audio/video) no depende de Janus; Janus entra en F4/F5. Web/iOS quedan fuera.
 |---|---|
 | Complejidad E2EE de grupo | Empezar 1:1; grupo con sender keys + GOST; spec y auditoría |
 | E2EE + SFU: no transcodificar | Simulcast (no SVC) en SFU; forwarding; validar en spike |
-| Huecos GOST de la lib (Kuznyechik/AEAD/HKDF/constant-time) | Implementar Kuznyechik/CMAC/HKDF; Magma como fallback medido; auditoría y vectores |
+| Cripto GOST (constant-time/auditoría/benchmarks) | Kuznyechik/CMAC/HKDF/AEAD/SFrame implementados; auditar, medir y mantener Magma como fallback |
 | DTLS-SRTP estándar en el transporte | Aceptarlo como tubería + E2EE GOST; si no, stack GOST propio (fuera de alcance) |
 | Sin push: app cerrada no suena sola | WSS persistente + Telegram deep link; documentar que no es ring automático |
 | Telegram es tercero | Solo notificación/deep link; sin media ni contenido; HMAC de webhooks |
@@ -788,9 +790,10 @@ pinning** y objetivo **GOST TLS**; **GOST-first** (Kuznyechik/VKO/34.10-2012/
 Streebog); sin grabación ni auditoría de contenido (sí auditoría criptográfica).
 
 ### Bloqueantes
-1. **Cripto GOST**: implementar **Kuznyechik-CTR-ACPKM + CMAC**, HKDF-Streebog
-   y garantías constant-time; vectores, benchmark Android/Linux/Windows,
-   auditoría externa. Magma EtM solo como fallback medido.
+1. **Cripto GOST**: ya implementados Kuznyechik/CTR-ACPKM/CMAC/HKDF/AEAD/
+   SFrame-GOST; faltan auditoría externa, garantías constant-time, benchmark
+   Android/Windows y prueba de integración desde el cliente. Magma EtM solo
+   como fallback medido.
 2. **Frontera de transporte**: aceptar DTLS-SRTP estándar como tubería con
    E2EE GOST. Si no se acepta, hay que cambiar el stack (sin WebRTC/Janus).
 3. **Gateway C ↔ Janus**: WS/HTTP/JSON, sesiones/plugins/eventos, tokens,
@@ -854,16 +857,17 @@ Streebog); sin grabación ni auditoría de contenido (sí auditoría criptográf
 | Capa | GOST disponible | Estado |
 |---|---|---|
 | Hash | Streebog-256/512 (RFC 6986 streaming) | Sí; usar streaming, no el one-shot reverso |
-| HMAC/KDF | HMAC-Streebog, PBKDF2 | Sí; **falta HKDF** (implementar RFC 5869) |
+| HMAC/KDF | HMAC-Streebog, PBKDF2, HKDF | Sí |
 | Firma | GOST R 34.10-2012 | Sí |
 | Acuerdo de claves | VKO R 50.1.113-2016 | Sí |
 | Curvas | 2001 y TC26 2012 (256/512) | Sí |
-| Cifrado simétrico | Magma (GOST 28147-89) gamma/CFB | Sí |
-| Kuznyechik (GOST R 34.12-2015) | — | **Objetivo**; implementar con vectores |
-| AEAD/CMAC | — | **Objetivo**; Kuznyechik-CTR-ACPKM + CMAC; Magma EtM fallback |
+| Cifrado simétrico | Magma (GOST 28147-89) gamma/CFB | Sí (fallback) |
+| Kuznyechik (GOST R 34.12-2015) | Sí (`b436423`) | Implementado con vectores |
+| AEAD/CMAC | Sí (`b436423`) | Kuznyechik-CTR-ACPKM + CMAC (EtM) |
+| SFrame-GOST | Sí (`b436423`) | Perfil propio; replay/KID |
 | AES/ECDHE/Ed25519 | — | **No** para contenido/identidad |
 | RNG | `getentropy`/`BCryptGenRandom` | Sí (revisar Android/Linux/Windows) |
-| Constant-time | — | **No garantizado**; auditar |
+| Constant-time | — | **Pendiente**; S-box con cache-timing; auditar |
 | TLS | — | **GOST TLS** objetivo (OpenSSL+gost-engine); fallback TLS 1.3 + pinning |
 | DTLS | — | **No práctico**; DTLS-SRTP estándar como tubería |
 | TURN/Janus tokens | — | Estándar HMAC; gateway C para GOST en el borde |
