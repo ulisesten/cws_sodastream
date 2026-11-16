@@ -131,6 +131,14 @@ const char* cfg_getenv(const char* key) {
             return env_get("TELEGRAM_CALL_URI");
         case 0xa67ea4c6u: /* EXTERNAL_API_SECRET */
             return env_get("EXTERNAL_API_SECRET");
+        case 0x80c97130u: /* STUN_URLS */
+            return env_get("STUN_URLS");
+        case 0x1dbda671u: /* TURN_URLS */
+            return env_get("TURN_URLS");
+        case 0x4ef30257u: /* TURN_SECRET */
+            return env_get("TURN_SECRET");
+        case 0x67a029c7u: /* TURN_TTL_SECONDS */
+            return env_get("TURN_TTL_SECONDS");
         default:
             return env_get(key);
     }

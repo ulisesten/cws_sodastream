@@ -499,6 +499,26 @@ envío y push `dm`): [`chat_1a1_cliente.md`](chat_1a1_cliente.md).
 
 ---
 
+## Llamadas (señalización 1:1)
+
+Requiere Bearer. El alta/aceptación de la llamada y el aviso Telegram siguen
+en `/api/v1/integrations/telegram` (puente de notificación); esta sección es
+la señalización WebRTC.
+
+- `GET /api/v1/calls/:call_id` → estado, rol, peer y `peer_ip` informativo.
+- `GET /api/v1/calls/:call_id/ice` → `ice_servers` STUN/TURN con credenciales
+  temporales (`expires_in`).
+- `POST /api/v1/calls/:call_id/sdp`
+  `{ "type": "offer|answer", "sdp": "..." }` → releva `call.sdp` al peer.
+- `POST /api/v1/calls/:call_id/ice`
+  `{ "candidate": "...", "sdpMid": "...", "sdpMLineIndex": 0,
+  "usernameFragment": "..." }` → releva `call.ice` al peer.
+
+SDP/ICE solo con la llamada `accepted` (`409` si no). El servidor no maneja
+media ni descifra. Ver `docs/telegram_client.md`.
+
+---
+
 ## Integraciones
 
 Montado en `/api/v1/integrations`. Ver `docs/telegram_bot.md` para el flujo
@@ -631,4 +651,10 @@ TELEGRAM_NOTIFY_ALWAYS=0
 TELEGRAM_LINK_TTL_MIN=15
 TELEGRAM_CALL_URI=cws
 EXTERNAL_API_SECRET=<secreto-largo-aleatorio>
+
+# Llamadas / ICE-TURN
+STUN_URLS=stun:stun.sodastream.fun:3478
+TURN_URLS=turn:turn.sodastream.fun:3478?transport=udp,turns:turn.sodastream.fun:443?transport=tcp
+TURN_SECRET=<secreto-de-coturn>
+TURN_TTL_SECONDS=3600
 ```

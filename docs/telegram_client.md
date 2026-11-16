@@ -252,7 +252,41 @@ Errores: `400` datos inválidos, `401` token, `404` usuario/llamada,
 - **Empaquetado**: MSI/portable y AppImage/deb; sin consola; auto-update
   self-hosted.
 
-## 10. Media (fase siguiente)
+## 10. Señalización WebRTC 1:1 (audio)
+
+Con la llamada **aceptada**, el servidor solo releva SDP/ICE; el media es
+P2P (o TURN) y E2EE en el cliente.
+
+| Método | Ruta | Uso |
+|---|---|---|
+| GET | `/api/v1/calls/:call_id` | Estado, rol y peer |
+| GET | `/api/v1/calls/:call_id/ice` | STUN/TURN con credenciales temporales |
+| POST | `/api/v1/calls/:call_id/sdp` | `{ "type":"offer|answer", "sdp":"..." }` |
+| POST | `/api/v1/calls/:call_id/ice` | `{ "candidate":"...", "sdpMid":"...", "sdpMLineIndex":0, "usernameFragment":"..." }` |
+
+- SDP/ICE solo se aceptan si la llamada está `accepted` (si no, `409`).
+- El servidor releva al otro participante por WSS:
+  - `call.sdp`: `{call_id, from_public, type, sdp}`
+  - `call.ice`: `{call_id, from_public, candidate, sdpMid, sdpMLineIndex, usernameFragment}`
+- `GET /ice` devuelve `ice_servers` con STUN y TURN (usuario/credencial
+  temporales; expira). Refresca antes de `expires_in`.
+- `GET /calls/:call_id` devuelve `estado`, `role`, `peer_public`,
+  `peer_name` y `peer_ip` (informativo; la ruta real la deciden los
+  candidatos ICE).
+
+Secuencia:
+```
+caller: notify -> accept (callee) -> GET /ice
+caller: createOffer -> POST /sdp  -> callee recibe call.sdp
+callee: createAnswer -> POST /sdp -> caller recibe call.sdp
+ambos: onicecandidate -> POST /ice -> el otro recibe call.ice
+media P2P/TURN; SFrame-GOST encima
+```
+- En el cliente, encola candidatos hasta tener `remoteDescription`.
+- No uses `peer_ip` como dirección de media; usa ICE/STUN/TURN.
+- El servidor no abre RTP ni descifra.
+
+## 11. Media (fase siguiente)
 
 Este puente **no** establece audio/video. La fase WebRTC usará:
 - `call.accepted` como señal para iniciar SDP/ICE.
@@ -261,9 +295,11 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
   media: NAT, puertos y candidatos ICE son necesarios.
 - E2EE GOST (SFrame-GOST) y Janus interno para grupo/walkie. La lib
   `c_gost_encryption` ya implementa Kuznyechik, AEAD y SFrame-GOST; falta
-  integrarlo en el cliente y auditarlo.
+  integrarlo en el cliente WebRTC y auditarlo.
+- El servidor ya expone ICE/TURN y relay SDP/ICE; el cliente debe conectar
+  `RTCPeerConnection` y aplicar SFrame-GOST a los frames.
 
-## 11. Seguridad
+## 12. Seguridad
 
 - No loguees tokens, `call_id` completos ni teléfonos.
 - El deep link no lleva token: la app autentica y luego consulta/acepta.
@@ -273,12 +309,14 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
   al otro extremo.
 - Certificate pinning/CA privada; sin fallback a HTTP.
 
-## 12. Checklist de aceptación
+## 13. Checklist de aceptación
 
 - [ ] App abierta + WSS: `call.incoming` sin Telegram/FCM.
 - [ ] WSS caído: sin Telegram no hay ring; `/pending` sigue disponible.
 - [ ] Telegram vinculado: aviso con `cws://call/<id>` y deep link abre la app.
 - [ ] Aceptar/rechazar/terminar actualizan ambos lados.
+- [ ] SDP/ICE se relevan solo en `accepted`; candidatos encolados hasta remoteDescription.
+- [ ] `GET /calls/:id/ice` entrega STUN/TURN y se refresca antes de expirar.
 - [ ] `call_id` no se reutiliza; 409 se muestra como expirada.
 - [ ] Sin teléfono funciona; con teléfono opcional se mapea.
 - [ ] `usu_id` interno nunca aparece en requests/respuestas/logs.
@@ -287,7 +325,7 @@ Este puente **no** establece audio/video. La fase WebRTC usará:
 - [ ] Pruebas de red: WS drop/reconnect, token expirado, app en background,
       servidor reiniciado (estado efímero).
 
-## 13. Ejemplos curl
+## 14. Ejemplos curl
 
 ```bash
 # Notificar (solicitante)

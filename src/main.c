@@ -20,6 +20,7 @@
 #include "api/v1/routes/app/releases_routes.h"
 #include "api/v1/routes/integrations/telegram/telegram_routes.h"
 #include "api/v1/routes/integrations/external/external_routes.h"
+#include "api/v1/routes/calls/calls_routes.h"
 #include "ws_api/v1/ws_v1.h"
 #include "integrations/telegram/telegram.h"
 #include "integrations/telegram/telegram_domain.h"
@@ -177,6 +178,12 @@ int main(void) {
         if (tg) cws_app_mount(g_app, "/api/v1/integrations/telegram", tg);
         cws_router_t* ext = external_routes();
         if (ext) cws_app_mount(g_app, "/api/v1/integrations/external", ext);
+    }
+
+    /* Señalización 1:1: estado, ICE/TURN, SDP e ICE candidates. */
+    {
+        cws_router_t* calls = calls_routes();
+        if (calls) cws_app_mount(g_app, "/api/v1/calls", calls);
     }
 
     /* WebSocket API v1: endpoint genérico de prueba en /ws/v1. El handshake
