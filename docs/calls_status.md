@@ -26,19 +26,23 @@ Actualizado: 2026-11-16. Complementa `docs/calls_proposal.md` y
 | Capa | Estado |
 |---|---|
 | Transporte WebRTC DTLS-SRTP | Lo pone el cliente/WebRTC; es estándar, **no GOST**. En 1:1 P2P el TURN no lo descifra. |
-| E2EE GOST por frame (SFrame-GOST) | Librería implementada (`gost_sframe`/`gost_aead`); **integración en el media del cliente pendiente**. |
+| E2EE GOST por frame (FrameCryptor-GOST) | **Integrado en el cliente Android** para audio y vídeo; verificado en llamada real (2026-11-16, `framesDecoded > 0` en ambos extremos). |
 | SFU/Janus | Sin SFrame-GOST el SFU termina DTLS-SRTP y ve el media; con SFrame solo reenvía cifrado. Falta el gateway/Janus. |
-| Gestión de claves E2EE | VKO/34.10-2012 + HKDF-Streebog + sender keys: diseño; falta implementarla en el cliente. |
-| Verificación de claves | Safety number/QR: pendiente. |
+| Gestión de claves E2EE | VKO/34.10-2012 + HKDF-Streebog + clave efímera por llamada: implementada en el cliente. Falta ratchet. |
+| Verificación de claves | Código corto Streebog-256 visible en la UI; confirmación automática y safety number/QR: pendientes. |
 | Auditoría/constant-time | Pendiente (S-box de Kuznyechik con cache-timing). |
 | Servidor C | No toca media; solo señaliza y da TURN. |
 
-**Conclusión:** el media **no está E2EE GOST de punta a punta todavía**. Si el
-cliente usa WebRTC sin SFrame, el audio/video va cifrado con DTLS-SRTP
-(estándar), no con GOST. Para 1:1 P2P el TURN no ve el contenido; para
-grupo/SFU hace falta SFrame-GOST o el SFU descifra.
+**Conclusión:** el media de las llamadas 1:1 Android va **E2EE GOST de punta a
+punta** (FrameCryptor; el TURN no ve el contenido). Quedan identidad
+autenticada, confirmación de clave, ratchet y auditoría; el detalle y los
+cambios de API necesarios están en `docs/calls_e2ee_pending.md`.
 
 ## Pendiente del lado servidor
+
+> Lista de seguridad y cambios de API para E2EE:
+> `docs/calls_e2ee_pending.md` (capacidad/versión, prekeys, confirmación,
+> `call_id`, relay endurecido, TURN, códigos de error).
 
 ### 1:1 (prioridad)
 

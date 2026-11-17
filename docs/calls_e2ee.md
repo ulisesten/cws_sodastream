@@ -74,6 +74,15 @@ cabecera de códec (claro) || ciphertext || CMAC(16) || IV(16) || len(IV) || key
   - `setSharedKey(0, key)` con la clave VKO/HKDF de 32 B.
 - `CallViewModel` añade/parsea el atributo SDP, deriva la clave y llama a
   `engine.setE2eeKey()` antes de decodificar media.
+  - Valida versión `v1`, que el atributo aparezca una sola vez y que la clave
+    pública sea de 64 B; una versión desconocida termina la llamada.
+  - Rechaza un cambio de clave dentro de la misma llamada (rekey no soportado).
+- La pantalla de llamada muestra `E2EE GOST · <código>`: Streebog-256 de la
+  clave derivada (4 grupos de 4 hex) para que ambos usuarios lo comparen por
+  voz. Es una verificación manual, no sustituye a la identidad autenticada.
+- Los `FrameCryptor` tienen un `Observer` que registra
+  `DECRYPTIONFAILED`/`ENCRYPTIONFAILED`/`MISSINGKEY`/`INTERNALERROR` para
+  diagnóstico.
 
 ## 4. Fail-closed
 
@@ -90,6 +99,8 @@ cabecera de códec (claro) || ciphertext || CMAC(16) || IV(16) || len(IV) || key
 - **Sin autenticación de la clave efímera**: el servidor de señalización
   (o un MITM de TLS) podría sustituir la clave. Falta X3DH-GOST con prekeys
   firmadas y safety numbers/QR.
+- **Sin confirmación automática de clave**: el código corto es manual. Falta
+  el MAC cruzado por DataChannel o por la API.
 - **Sin ratchet por mensaje**: la clave es por llamada; no hay
   post-compromise security.
 - **Sin auditoría externa** de la construcción AEAD, del fork ni de VKO.
@@ -98,3 +109,6 @@ cabecera de códec (claro) || ciphertext || CMAC(16) || IV(16) || len(IV) || key
   identidad.
 - El AAR del fork es arm64-v8a; falta build multi-ABI y firma para
   distribución.
+
+Lista detallada y cambios necesarios en la API:
+`docs/calls_e2ee_pending.md`.
