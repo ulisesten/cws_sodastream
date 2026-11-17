@@ -10,6 +10,7 @@
 
 #include "users_routes.h"
 #include "domain/users_domain.h"
+#include "domain/users_device_domain.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,7 @@
 #include <gost/gost.h>
 
 #include "authorization.h"
+#include "authorization_mobile.h"
 #include "jwt.h"
 #include "password.h"
 #include "configuration.h"
@@ -257,6 +259,97 @@ done:
 }
 
 /* ------------------------------------------------------------------ */
+/* Device ID (notificaciones)                                          */
+/* ------------------------------------------------------------------ */
+
+static char* users_body_dup(const cws_request_t* req) {
+    if (!req || !req->body || req->body_len == 0 || req->body_len > 8192)
+        return NULL;
+    char* b = (char*)malloc(req->body_len + 1);
+    if (!b) return NULL;
+    memcpy(b, req->body, req->body_len);
+    b[req->body_len] = '\0';
+    return b;
+}
+
+static const char* users_result_str(const sql_result_t* r, const char* name) {
+    if (!r || r->nrows == 0) return NULL;
+    for (size_t c = 0; c < r->ncols; c++) {
+        if (r->columns[c].name && strcmp(r->columns[c].name, name) == 0) {
+            const sql_value_t* v = &r->rows[0].cols[c];
+            if (!v->is_null && v->type == SQL_COL_STRING)
+                return v->val.as_string;
+        }
+    }
+    return NULL;
+}
+
+static CWS_HANDLER(users_device_set_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { reject_json(res, 401, "No autorizado"); return; }
+    char* body = users_body_dup(req);
+    char* device = NULL;
+    if (body) jwt_json_get_string(body, "device_id", &device);
+    if (!device || strlen(device) < 1 || strlen(device) > 255) {
+        free(body); free(device);
+        reject_json(res, 400, "device_id (1-255) requerido");
+        return;
+    }
+    for (const unsigned char* p = (const unsigned char*)device; *p; p++) {
+        if (*p < 0x20 || *p == 0x7f) {
+            free(body); free(device);
+            reject_json(res, 400, "device_id inválido");
+            return;
+        }
+    }
+    if (!users_device_set(u->usu_id, device)) {
+        free(body); free(device);
+        reject_json(res, 500, "No se pudo guardar el device_id");
+        return;
+    }
+    free(body); free(device);
+    cws_response_status(res, 200);
+    send_json(res,
+              "{\"success\":true,\"error\":0,\"msg\":\"Device ID guardado\"}");
+}
+
+static CWS_HANDLER(users_device_get_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { reject_json(res, 401, "No autorizado"); return; }
+    sql_result_t* r = users_device_get(u->usu_id);
+    if (!r) { reject_json(res, 500, "No se pudo consultar el device_id"); return; }
+    const char* dev = users_result_str(r, "usu_device_id");
+    char esc[512];
+    json_escape_to(esc, sizeof(esc), dev ? dev : "");
+    char body[640];
+    snprintf(body, sizeof(body),
+             "{\"success\":true,\"error\":0,\"data\":{\"device_id\":\"%s\"}}",
+             esc);
+    sql_result_free(r);
+    cws_response_status(res, 200);
+    send_json(res, body);
+}
+
+static CWS_HANDLER(users_device_clear_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { reject_json(res, 401, "No autorizado"); return; }
+    if (!users_device_clear(u->usu_id)) {
+        reject_json(res, 500, "No se pudo eliminar el device_id");
+        return;
+    }
+    cws_response_status(res, 200);
+    send_json(res,
+              "{\"success\":true,\"error\":0,\"msg\":\"Device ID eliminado\"}");
+}
+
+static CWS_HANDLER(users_device_dispatch_handler) {
+    if (req->method == CWS_M_POST) users_device_set_handler(req, res);
+    else if (req->method == CWS_M_GET) users_device_get_handler(req, res);
+    else if (req->method == CWS_M_DELETE) users_device_clear_handler(req, res);
+    else cws_response_send_error(res, 405);
+}
+
+/* ------------------------------------------------------------------ */
 /* router                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -304,6 +397,14 @@ cws_router_t* users_routes(void) {
         cws_router_use(prot, cws_mw_authorization_verify);
         cws_router_add(prot, CWS_M_GET, "/", user_me_handler);
         cws_router_mount(r, "/me", prot);
+    }
+
+    /* Sub-router protegido Bearer: /device (POST/GET/DELETE). */
+    cws_router_t* dev = cws_router_new();
+    if (dev) {
+        cws_router_use(dev, cws_mw_authorization_mobile_verify);
+        cws_router_add(dev, CWS_M_UNKNOWN, "/", users_device_dispatch_handler);
+        cws_router_mount(r, "/device", dev);
     }
 
     return r;

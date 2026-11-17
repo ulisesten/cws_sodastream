@@ -307,6 +307,20 @@ curl https://cws.sodastream.fun/api/v1/auth/mobile/me \
 **200** `{ "usu_id": 1017, "usu_nombre": "CWS", "usu_correo": "user@test.local" }`
 - `401` sin token / token inválido
 
+### Device ID (notificaciones)
+
+Requiere Bearer. Guarda un identificador de dispositivo por usuario para
+notificaciones (FCM/APNs futuro). No es un token de push.
+
+- `POST /api/v1/users/device` body `{ "device_id": "..." }` (1-255 chars).
+- `GET /api/v1/users/device` → `{ "device_id": "..." }`.
+- `DELETE /api/v1/users/device` → borra el valor.
+
+El endpoint vive en el router de users pero exige Bearer móvil. Requiere
+aplicar `db_sodastream/usuarios_device_id.sql` (columna
+`cat_usuarios.usu_device_id` + `procUsersDeviceProc/Cons`). Es **un** device
+por usuario; para varios dispositivos hace falta una tabla aparte.
+
 ### `POST /api/v1/auth/mobile/logout`
 Header **`Authorization: Bearer <access_token>`**. Rota el `usu_salt` del
 usuario, revocando **todos** sus tokens (access y refresh).

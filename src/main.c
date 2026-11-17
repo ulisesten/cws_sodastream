@@ -14,6 +14,7 @@
 #include "api/v1/routes/videos/domain/videos_domain.h"
 #include "api/v1/routes/users/users_routes.h"
 #include "api/v1/routes/users/domain/users_domain.h"
+#include "api/v1/routes/users/domain/users_device_domain.h"
 #include "api/v1/routes/mobile/mobile_routes.h"
 #include "api/v1/routes/messaging/messaging_routes.h"
 #include "api/v1/routes/messaging/domain/messaging_domain.h"
@@ -116,6 +117,7 @@ int main(void) {
         return 1;
     }
     users_domain_init();
+    users_device_domain_init();
 
     /* Acceso a datos del chat 1:1 (procChatMensajesCons/Proc). */
     messaging_domain_init();
@@ -219,6 +221,7 @@ int main(void) {
     telegram_shutdown();
     telegram_domain_shutdown();
     calls_identity_domain_shutdown();
+    users_device_domain_shutdown();
     cws_app_free(g_app);
     return rc == CWS_OK ? 0 : 1;
 }
