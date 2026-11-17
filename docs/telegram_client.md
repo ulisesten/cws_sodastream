@@ -256,10 +256,12 @@ number) es del cliente. Requiere aplicar `db_sodastream/video_llamadas_identidad
 - **Permisos**: `INTERNET`, `POST_NOTIFICATIONS`; en la fase de media
   `RECORD_AUDIO`, `CAMERA`, `FOREGROUND_SERVICE_MICROPHONE/CAMERA`.
 - **Deep link**: intent-filter arriba; singleTask/singleTop para reutilizar.
-- **Device ID**: tras el login, `POST /api/v1/users/device`
-  `{ "device_id": "<id estable>" }`; actualízalo si cambia y bórralo en logout
-  (`DELETE`). Hoy solo se guarda para notificaciones futuras (FCM/APNs); no
-  envía push por sí solo.
+- **Dispositivos**: tras el login, `POST /api/v1/users/device`
+  `{ "device_id": "<id estable>", "plataforma": 1|2|3|4|5,
+  "nombre": "...", "push_token": "..." }`. Usa `GET` para listar y
+  `DELETE` con `device_id` al cerrar sesión (o sin él para logout-all). Hoy
+  solo se guarda para notificaciones futuras (FCM/APNs); no envía push por sí
+  solo.
 - **Almacenamiento**: access/refresh en Keystore/EncryptedSharedPreferences;
   CA privada + pinning en OkHttp/`network_security_config`.
 - **Distribución**: APK firmado; sin Play Store; actualización self-hosted;

@@ -307,19 +307,23 @@ curl https://cws.sodastream.fun/api/v1/auth/mobile/me \
 **200** `{ "usu_id": 1017, "usu_nombre": "CWS", "usu_correo": "user@test.local" }`
 - `401` sin token / token inválido
 
-### Device ID (notificaciones)
+### Dispositivos (notificaciones)
 
-Requiere Bearer. Guarda un identificador de dispositivo por usuario para
-notificaciones (FCM/APNs futuro). No es un token de push.
+Requiere Bearer. Guarda uno o varios dispositivos por usuario para
+notificaciones (FCM/APNs futuro).
 
-- `POST /api/v1/users/device` body `{ "device_id": "..." }` (1-255 chars).
-- `GET /api/v1/users/device` → `{ "device_id": "..." }`.
-- `DELETE /api/v1/users/device` → borra el valor.
+- `POST /api/v1/users/device` body
+  `{ "device_id": "...", "plataforma": 1, "nombre": "...",
+  "push_token": "..." }` (device 1-255; plataforma 1 Android, 2 Linux,
+  3 Windows, 4 iOS, 5 web; nombre ≤100; push_token ≤512).
+- `GET /api/v1/users/device` → `device_id` (primero) + `devices`:
+  `[{device_id, plataforma, nombre, activo, ultimo_uso}]`.
+- `DELETE /api/v1/users/device` body `{ "device_id": "..." }` → elimina ese
+  dispositivo; sin `device_id` desactiva todos (logout-all).
 
-El endpoint vive en el router de users pero exige Bearer móvil. Requiere
-aplicar `db_sodastream/usuarios_device_id.sql` (columna
-`cat_usuarios.usu_device_id` + `procUsersDeviceProc/Cons`). Es **un** device
-por usuario; para varios dispositivos hace falta una tabla aparte.
+Requiere aplicar `db_sodastream/usuarios_devices.sql`
+(`opr_usuarios_devices` + `procUsersDevicesProc/Cons`). La tabla vieja
+`usuarios_device_id.sql` queda solo por compatibilidad.
 
 ### `POST /api/v1/auth/mobile/logout`
 Header **`Authorization: Bearer <access_token>`**. Rota el `usu_salt` del

@@ -259,7 +259,7 @@ done:
 }
 
 /* ------------------------------------------------------------------ */
-/* Device ID (notificaciones)                                          */
+/* Devices (multi-dispositivo, notificaciones)                         */
 /* ------------------------------------------------------------------ */
 
 static char* users_body_dup(const cws_request_t* req) {
@@ -272,16 +272,38 @@ static char* users_body_dup(const cws_request_t* req) {
     return b;
 }
 
-static const char* users_result_str(const sql_result_t* r, const char* name) {
-    if (!r || r->nrows == 0) return NULL;
+static const sql_value_t* users_field(const sql_result_t* r, size_t row,
+                                      const char* name) {
+    if (!r || row >= r->nrows) return NULL;
     for (size_t c = 0; c < r->ncols; c++) {
-        if (r->columns[c].name && strcmp(r->columns[c].name, name) == 0) {
-            const sql_value_t* v = &r->rows[0].cols[c];
-            if (!v->is_null && v->type == SQL_COL_STRING)
-                return v->val.as_string;
-        }
+        if (r->columns[c].name && strcmp(r->columns[c].name, name) == 0)
+            return &r->rows[row].cols[c];
     }
     return NULL;
+}
+
+static const char* users_result_str(const sql_result_t* r, size_t row,
+                                    const char* name) {
+    const sql_value_t* v = users_field(r, row, name);
+    if (!v || v->is_null || v->type != SQL_COL_STRING) return NULL;
+    return v->val.as_string;
+}
+
+static int64_t users_result_i64(const sql_result_t* r, size_t row,
+                                const char* name, int64_t def) {
+    const sql_value_t* v = users_field(r, row, name);
+    if (!v || v->is_null || v->type != SQL_COL_INT) return def;
+    return v->val.as_int;
+}
+
+static void users_result_datetime(const sql_result_t* r, size_t row,
+                                  const char* name, char* out, size_t cap) {
+    out[0] = '\0';
+    const sql_value_t* v = users_field(r, row, name);
+    if (!v || v->is_null || v->type != SQL_COL_DATETIME) return;
+    const sql_datetime_t* d = &v->val.as_datetime;
+    snprintf(out, cap, "%04d-%02d-%02dT%02d:%02d:%02d",
+             d->year, d->month, d->day, d->hour, d->minute, d->second);
 }
 
 static CWS_HANDLER(users_device_set_handler) {
@@ -289,42 +311,85 @@ static CWS_HANDLER(users_device_set_handler) {
     if (!u) { reject_json(res, 401, "No autorizado"); return; }
     char* body = users_body_dup(req);
     char* device = NULL;
-    if (body) jwt_json_get_string(body, "device_id", &device);
+    char* nombre = NULL;
+    char* push = NULL;
+    int64_t plataforma = 0;
+    if (body) {
+        jwt_json_get_string(body, "device_id", &device);
+        jwt_json_get_string(body, "nombre", &nombre);
+        jwt_json_get_string(body, "push_token", &push);
+        jwt_json_get_int(body, "plataforma", &plataforma);
+    }
     if (!device || strlen(device) < 1 || strlen(device) > 255) {
-        free(body); free(device);
+        free(body); free(device); free(nombre); free(push);
         reject_json(res, 400, "device_id (1-255) requerido");
         return;
     }
     for (const unsigned char* p = (const unsigned char*)device; *p; p++) {
         if (*p < 0x20 || *p == 0x7f) {
-            free(body); free(device);
+            free(body); free(device); free(nombre); free(push);
             reject_json(res, 400, "device_id inválido");
             return;
         }
     }
-    if (!users_device_set(u->usu_id, device)) {
-        free(body); free(device);
-        reject_json(res, 500, "No se pudo guardar el device_id");
+    if (plataforma < 0 || plataforma > 5 ||
+        (nombre && strlen(nombre) > 100) ||
+        (push && strlen(push) > 512)) {
+        free(body); free(device); free(nombre); free(push);
+        reject_json(res, 400, "plataforma/nombre/push_token inválidos");
         return;
     }
-    free(body); free(device);
+
+    sql_result_t* r = users_devices_upsert(u->usu_id, device,
+                                           (int)plataforma, nombre, push);
+    int ok = users_device_ok(r);
+    sql_result_free(r);
+    free(body); free(device); free(nombre); free(push);
+    if (!ok) {
+        reject_json(res, 500, "No se pudo guardar el dispositivo");
+        return;
+    }
     cws_response_status(res, 200);
     send_json(res,
-              "{\"success\":true,\"error\":0,\"msg\":\"Device ID guardado\"}");
+              "{\"success\":true,\"error\":0,\"msg\":\"Dispositivo guardado\"}");
 }
 
 static CWS_HANDLER(users_device_get_handler) {
     const jwt_user_t* u = authorization_mobile_request_user(req);
     if (!u) { reject_json(res, 401, "No autorizado"); return; }
-    sql_result_t* r = users_device_get(u->usu_id);
-    if (!r) { reject_json(res, 500, "No se pudo consultar el device_id"); return; }
-    const char* dev = users_result_str(r, "usu_device_id");
-    char esc[512];
-    json_escape_to(esc, sizeof(esc), dev ? dev : "");
-    char body[640];
-    snprintf(body, sizeof(body),
-             "{\"success\":true,\"error\":0,\"data\":{\"device_id\":\"%s\"}}",
-             esc);
+    sql_result_t* r = users_devices_list(u->usu_id, 1);
+    if (!r) {
+        reject_json(res, 500, "No se pudo consultar los dispositivos");
+        return;
+    }
+
+    char body[16384];
+    size_t o = 0;
+    const char* first = r->nrows ? users_result_str(r, 0, "usd_device_id") : "";
+    char first_esc[300];
+    json_escape_to(first_esc, sizeof(first_esc), first ? first : "");
+    o += (size_t)snprintf(body + o, sizeof(body) - o,
+                          "{\"success\":true,\"error\":0,\"data\":{"
+                          "\"device_id\":\"%s\",\"devices\":[",
+                          first_esc);
+    for (size_t i = 0; i < r->nrows; i++) {
+        const char* dev = users_result_str(r, i, "usd_device_id");
+        const char* nom = users_result_str(r, i, "usd_nombre");
+        int64_t plat = users_result_i64(r, i, "usd_plataforma", 0);
+        int64_t activo = users_result_i64(r, i, "usd_activo", 0);
+        char updated[32];
+        users_result_datetime(r, i, "usd_ultimo_uso", updated, sizeof(updated));
+        char dev_esc[300], nom_esc[256];
+        json_escape_to(dev_esc, sizeof(dev_esc), dev ? dev : "");
+        json_escape_to(nom_esc, sizeof(nom_esc), nom ? nom : "");
+        if (o > sizeof(body) - 512) break;
+        o += (size_t)snprintf(body + o, sizeof(body) - o,
+                 "%s{\"device_id\":\"%s\",\"plataforma\":%lld,"
+                 "\"nombre\":\"%s\",\"activo\":%s,\"ultimo_uso\":\"%s\"}",
+                 i ? "," : "", dev_esc, (long long)plat, nom_esc,
+                 activo ? "true" : "false", updated);
+    }
+    snprintf(body + o, sizeof(body) - o, "]}}");
     sql_result_free(r);
     cws_response_status(res, 200);
     send_json(res, body);
@@ -333,13 +398,24 @@ static CWS_HANDLER(users_device_get_handler) {
 static CWS_HANDLER(users_device_clear_handler) {
     const jwt_user_t* u = authorization_mobile_request_user(req);
     if (!u) { reject_json(res, 401, "No autorizado"); return; }
-    if (!users_device_clear(u->usu_id)) {
-        reject_json(res, 500, "No se pudo eliminar el device_id");
+    char* body = users_body_dup(req);
+    char* device = NULL;
+    if (body) jwt_json_get_string(body, "device_id", &device);
+
+    int ok;
+    if (device && *device) {
+        ok = users_devices_delete(u->usu_id, device);
+    } else {
+        ok = users_devices_logout_all(u->usu_id);
+    }
+    free(body); free(device);
+    if (!ok) {
+        reject_json(res, 500, "No se pudo eliminar el dispositivo");
         return;
     }
     cws_response_status(res, 200);
     send_json(res,
-              "{\"success\":true,\"error\":0,\"msg\":\"Device ID eliminado\"}");
+              "{\"success\":true,\"error\":0,\"msg\":\"Dispositivo(s) eliminado(s)\"}");
 }
 
 static CWS_HANDLER(users_device_dispatch_handler) {
@@ -350,6 +426,8 @@ static CWS_HANDLER(users_device_dispatch_handler) {
 }
 
 /* ------------------------------------------------------------------ */
+/* router                                                              */
+/* ------------------------------------------------------------------ *//* ------------------------------------------------------------------ */
 /* router                                                              */
 /* ------------------------------------------------------------------ */
 
