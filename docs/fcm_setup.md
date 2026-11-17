@@ -177,10 +177,14 @@ Content-Type: application/json
 }
 ```
 
-- Para llamadas: `priority=high` + `notification` con `channel_id=calls` para
-  que FCM la muestre aunque el proceso esté muerto. Incluir `call_id` en
-  `data` para el deep link.
+- Para llamadas: **data-only** con `priority=high` y `ttl=60s`; la app
+  (`PushService`) construye la notificación con `fullScreenIntent` y el deep
+  link. Evita que FCM muestre una notificación sin pantalla completa cuando el
+  proceso está muerto.
 - Para mensajes: data-only; no usar `priority=high` salvo urgencia.
+- Si se usa `notification` en el payload, FCM la muestra y **no** llama a
+  `onMessageReceived` en background; el full-screen intent tendría que ir en
+  el payload y no se puede personalizar igual.
 - En Android 13+ sin permiso de notificaciones el token sigue válido, pero la
   notificación no se muestra: la app debe pedir el permiso.
 
