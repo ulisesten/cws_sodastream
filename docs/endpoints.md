@@ -325,6 +325,9 @@ Requiere aplicar `db_sodastream/usuarios_devices.sql`
 (`opr_usuarios_devices` + `procUsersDevicesProc/Cons`). La tabla vieja
 `usuarios_device_id.sql` queda solo por compatibilidad.
 
+El flujo completo de push (FCM, token, HTTP v1, full-screen intent) está en
+`docs/fcm_setup.md`.
+
 ### `POST /api/v1/auth/mobile/logout`
 Header **`Authorization: Bearer <access_token>`**. Rota el `usu_salt` del
 usuario, revocando **todos** sus tokens (access y refresh).
