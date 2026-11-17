@@ -357,7 +357,7 @@ static CWS_HANDLER(external_notify_handler) {
 
     int ws_online = 0;
     int tg_sent = telegram_notify_bridge(uid, "", nombre, "", call_id, tipo,
-                                         &ws_online);
+                                         0, "", 0, &ws_online);
     char name_esc[256];
     json_escape(name_esc, sizeof(name_esc), callee_name);
     char resp[512];

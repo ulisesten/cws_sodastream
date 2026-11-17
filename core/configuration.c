@@ -139,6 +139,10 @@ const char* cfg_getenv(const char* key) {
             return env_get("TURN_SECRET");
         case 0x67a029c7u: /* TURN_TTL_SECONDS */
             return env_get("TURN_TTL_SECONDS");
+        case 0xd1efc799u: /* CALL_E2EE_REQUIRED */
+            return env_get("CALL_E2EE_REQUIRED");
+        case 0x38cde61bu: /* CALL_ID_SERVER */
+            return env_get("CALL_ID_SERVER");
         default:
             return env_get(key);
     }

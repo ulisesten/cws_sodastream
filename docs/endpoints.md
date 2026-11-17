@@ -507,6 +507,10 @@ en `/api/v1/integrations/telegram` (puente de notificación); esta sección es
 la señalización WebRTC.
 
 - `GET /api/v1/calls/:call_id` → estado, rol, peer y `peer_ip` informativo.
+- `POST /api/v1/calls/identity` → `{ "device_id": "...", "identity_key":
+  "<base64>" }`; guarda la clave pública del dispositivo.
+- `GET /api/v1/calls/identity/:usu_id_public` → claves públicas del usuario
+  (`identities: [{device_id, identity_key}]`).
 - `GET /api/v1/calls/:call_id/ice` → `ice_servers` STUN/TURN con credenciales
   temporales (`expires_in`).
 - `POST /api/v1/calls/:call_id/sdp`
@@ -516,7 +520,9 @@ la señalización WebRTC.
   "usernameFragment": "..." }` → releva `call.ice` al peer.
 
 SDP/ICE solo con la llamada `accepted` (`409` si no). El servidor no maneja
-media ni descifra. Ver `docs/telegram_client.md`.
+media ni descifra. `CALL_E2EE_REQUIRED=true` exige `e2ee` en notify/accept
+(`426 E2EE_UNSUPPORTED`); `CALL_ID_SERVER=true` hace que el servidor genere
+el `call_id`. Ver `docs/telegram_client.md`.
 
 **Estado verificado (2026-11-16):**
 
@@ -553,13 +559,16 @@ completo y la configuración.
   telegram_name }`.
 - `POST /api/v1/integrations/telegram/unlink` → borra el vínculo.
 - `POST /api/v1/integrations/telegram/notify` body
-  `{ "usu_id_public": "...", "call_id": "...", "tipo": "audio|video|walkie",
+  `{ "usu_id_public": "...", "tipo": "audio|video|walkie",
+  "e2ee": {"v":1,"algs":["gost"],"confirm":true},
   "ip": "...", "telefono": "..." }` → estado ringing en memoria, mapea
   IP/teléfono del solicitante, emite WSS `call.incoming` y, si no hay WS o
   `TELEGRAM_NOTIFY_ALWAYS=1`, manda Telegram con `cws://call/<call_id>`.
+  El servidor genera el `call_id` y lo devuelve; el cliente no debe inventarlo.
 - `POST /api/v1/integrations/telegram/accept` (receptor) body
-  `{ "call_id": "...", "ip": "...", "telefono": "..." }` → valida, mapea
-  IP/teléfono del receptor y emite WSS `call.accepted` al solicitante.
+  `{ "call_id": "...", "e2ee": {"v":1,"algs":["gost"],"confirm":true},
+  "ip": "...", "telefono": "..." }` → valida, mapea IP/teléfono del receptor
+  y emite WSS `call.accepted` al solicitante.
 - `POST /api/v1/integrations/telegram/reject` `{ "call_id": "..." }` →
   `call.rejected`.
 - `POST /api/v1/integrations/telegram/end` `{ "call_id": "..." }` →
@@ -678,4 +687,8 @@ STUN_URLS=stun:stun.sodastream.fun:3478
 TURN_URLS=turn:turn.sodastream.fun:3478?transport=udp,turns:turn.sodastream.fun:5349?transport=tcp
 TURN_SECRET=<secreto-de-coturn>
 TURN_TTL_SECONDS=3600
+
+# E2EE / identidad
+CALL_E2EE_REQUIRED=true
+CALL_ID_SERVER=true
 ```

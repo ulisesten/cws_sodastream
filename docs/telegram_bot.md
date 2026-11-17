@@ -55,8 +55,8 @@ Comandos del bot:
 ```json
 {
   "usu_id_public": "NloXjs43tIJP",
-  "call_id": "call123",
   "tipo": "audio",
+  "e2ee": { "v": 1, "algs": ["gost"], "confirm": true },
   "ip": "203.0.113.9",
   "telefono": "+5215550001"
 }
@@ -64,12 +64,16 @@ Comandos del bot:
 - `ip`/`telefono` son opcionales: el servidor toma la IP de
   `X-Forwarded-For`/`X-Real-IP` si existe y, si no, del body. Se guardan en el
   mapeo externo (IP/teléfono → usuario).
+- El servidor genera el `call_id` y lo devuelve; el cliente debe usarlo.
+- `CALL_E2EE_REQUIRED=true` exige `e2ee`; sin eso devuelve `426`.
 - Crea un estado de llamada **en memoria** (ringing) con `call_id`,
   solicitante y receptor.
-- Emite WSS `call.incoming` con `{call_id,from_public,from,ip,tipo}`
+- Emite WSS `call.incoming` con `{call_id,from_public,from,ip,tipo,e2ee}`
   (la IP del solicitante sale de `X-Forwarded-For`/`X-Real-IP` o del body).
 - Si no hay WS (o `NOTIFY_ALWAYS=1`) envía Telegram:
   `Llamada de <nombre> (<tipo>)` + `cws://call/<call_id>`.
+- El receptor debe aceptar con `e2ee` (`POST /accept`); el servidor lo
+  releva en `call.accepted`.
 - La app debe registrar el esquema `cws://` (Android intent-filter,
   Linux/Windows custom URL handler) para abrir la llamada.
 

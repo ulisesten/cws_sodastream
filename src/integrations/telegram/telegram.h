@@ -31,7 +31,8 @@ int telegram_notify_call(int64_t usu_id, const char* from_name,
 int telegram_notify_bridge(int64_t usu_id, const char* from_public,
                            const char* from_name, const char* from_ip,
                            const char* call_id, const char* tipo,
-                           int* ws_online);
+                           int e2ee_v, const char* e2ee_algs,
+                           int e2ee_confirm, int* ws_online);
 
 #ifdef __cplusplus
 }

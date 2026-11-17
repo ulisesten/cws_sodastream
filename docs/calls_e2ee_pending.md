@@ -18,6 +18,11 @@ Actualizado: 2026-11-16. Complementa `docs/calls_e2ee.md` (contrato) y
 
 ### 1. Autenticación de la clave efímera (MITM del signaling)
 
+> Servidor: ya existe `POST/GET /calls/identity` para publicar/consultar claves
+> públicas por dispositivo (`video_llamadas_identidad.sql`). Falta que el
+> cliente firme el SDP con la identidad y verifique TOFU/safety number, o el
+> flujo X3DH con prekeys de un solo uso.
+
 El servidor (o un MITM de TLS) puede sustituir el atributo
 `a=x-gost-e2ee:v1:<pub>` y quedar en medio. Hace falta una de estas vías:
 
@@ -115,6 +120,10 @@ El cliente ya muestra `E2EE GOST · <código>`. Falta:
 
 ### 13. Capacidad y versión E2EE en la invitación
 
+> Servidor: implementado. `notify`/`accept` exigen `e2ee` con
+> `CALL_E2EE_REQUIRED=true` y lo incluyen en `call.incoming`/`call.accepted`.
+> El cliente debe enviarlo y hacer fail-closed.
+
 Añadir a `call.incoming`/`notify`:
 
 ```json
@@ -127,12 +136,18 @@ capacidad E2EE si la política lo exige.
 
 ### 14. `call_id` impredecible y de un solo uso
 
+> Servidor: implementado. `CALL_ID_SERVER=true` genera 32 chars, controla
+> colisión y lo devuelve en la respuesta; el cliente debe usar ese valor.
+
 - 128 bits aleatorios (UUIDv4/ULID) generados por el servidor.
 - Rechazar reutilización con otros participantes (hoy el upsert puede
   sobrescribir estado).
 - TTL y limpieza; no aceptar `call_id` de otro usuario.
 
 ### 15. Relay de SDP/ICE endurecido
+
+> Servidor: tamaño, tipo, participación y estado `accepted` validados; falta
+> rate limit por llamada/usuario y no loguear SDP (hoy no se loguea).
 
 - `POST /calls/:id/sdp`: validar tamaño, `type`, autoría y que el `call_id`
   pertenece a la llamada; no loguear el SDP completo.
@@ -150,6 +165,9 @@ Ya existen credenciales temporales (coturn REST). Revisar:
 - Cuotas por usuario y por IP.
 
 ### 17. Identidad y multi-dispositivo
+
+> Servidor: directorio de identidad pública implementado. Falta vincular la
+> clave al `usu_id`/dispositivo en el flujo cliente y el multi-dispositivo.
 
 - Vincular la clave de identidad GOST al `usu_id` y a sus dispositivos.
 - Al aceptar/rechazar, avisar a los demás dispositivos del receptor.

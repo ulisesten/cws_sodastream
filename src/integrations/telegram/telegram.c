@@ -263,7 +263,8 @@ static void buf_puts(tg_buf_t* b, const char* s) {
 int telegram_notify_bridge(int64_t usu_id, const char* from_public,
                            const char* from_name, const char* from_ip,
                            const char* call_id, const char* tipo,
-                           int* ws_online) {
+                           int e2ee_v, const char* e2ee_algs,
+                           int e2ee_confirm, int* ws_online) {
     int online = ws_v1_user_online(usu_id);
     if (ws_online) *ws_online = online;
 
@@ -281,7 +282,18 @@ int telegram_notify_bridge(int64_t usu_id, const char* from_public,
         json_escape_into(&body, (from_ip && *from_ip) ? from_ip : "");
         buf_puts(&body, "\",\"tipo\":\"");
         json_escape_into(&body, (tipo && *tipo) ? tipo : "audio");
-        buf_puts(&body, "\"}");
+        if (e2ee_v > 0) {
+            buf_puts(&body, "\",\"e2ee\":{\"v\":");
+            char vbuf[16];
+            snprintf(vbuf, sizeof(vbuf), "%d", e2ee_v);
+            buf_puts(&body, vbuf);
+            buf_puts(&body, ",\"algs\":[\"");
+            json_escape_into(&body, (e2ee_algs && *e2ee_algs) ? "gost" : "gost");
+            buf_puts(&body, "\"],\"confirm\":");
+            buf_puts(&body, e2ee_confirm ? "true" : "false");
+            buf_puts(&body, "}");
+        }
+        buf_puts(&body, "}");
         ws_v1_emit_to_user(usu_id, "call.incoming", body.data, body.len);
         free(body.data);
     }

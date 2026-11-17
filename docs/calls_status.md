@@ -20,6 +20,10 @@ Actualizado: 2026-11-16. Complementa `docs/calls_proposal.md` y
 - Relay WSS `call.sdp` / `call.ice`.
 - Credenciales TURN temporales (coturn REST, HMAC-SHA1); STUN/TURN.
 - Lib GOST: Kuznyechik, CTR-ACPKM, CMAC, HKDF, AEAD, SFrame-GOST.
+- Capacidad E2EE en `notify`/`accept` y evento (`e2ee: {v,algs,confirm}`);
+  `CALL_E2EE_REQUIRED=true` por defecto.
+- `call_id` generado por el servidor (32 chars) y colisión controlada.
+- Directorio de identidad pública: `POST/GET /calls/identity`.
 
 ## Seguridad de audio/video
 
@@ -65,6 +69,14 @@ cambios de API necesarios están en `docs/calls_e2ee_pending.md`.
 8. **Métricas/observabilidad**: llamadas activas, setup success, relay TURN,
    timeouts, errores; logs sin SDP/tokens/teléfonos.
 9. **Tests automatizados**: E2E de create/accept/SDP/ICE/TURN y multi-dispositivo.
+
+### E2EE (cliente + servidor)
+
+- **X3DH/prekeys** o firma de SDP + TOFU: el directorio de claves públicas ya
+  existe; falta el flujo cliente (firma/verificación) y prekeys de un solo uso.
+- **Key confirmation** y **ratchet**.
+- **RNG/IV** y derivación Streebog en el fork WebRTC; zeroización.
+- **Auditoría/constant-time**.
 
 ### Grupo / walkie (secundario)
 

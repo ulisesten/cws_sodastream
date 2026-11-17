@@ -21,6 +21,7 @@
 #include "api/v1/routes/integrations/telegram/telegram_routes.h"
 #include "api/v1/routes/integrations/external/external_routes.h"
 #include "api/v1/routes/calls/calls_routes.h"
+#include "api/v1/routes/calls/domain/calls_identity_domain.h"
 #include "ws_api/v1/ws_v1.h"
 #include "integrations/telegram/telegram.h"
 #include "integrations/telegram/telegram_domain.h"
@@ -125,6 +126,7 @@ int main(void) {
     /* Integración Telegram: dominio (códigos/vínculos) + bot long polling. */
     telegram_domain_init();
     telegram_calls_init();
+    calls_identity_domain_init();
 
     /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
 
@@ -216,6 +218,7 @@ int main(void) {
     int rc = cws_app_run(g_app);
     telegram_shutdown();
     telegram_domain_shutdown();
+    calls_identity_domain_shutdown();
     cws_app_free(g_app);
     return rc == CWS_OK ? 0 : 1;
 }

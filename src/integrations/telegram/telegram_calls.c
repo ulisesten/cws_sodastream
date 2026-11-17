@@ -70,7 +70,9 @@ int telegram_calls_upsert(const char* call_id, int64_t caller_uid,
                           int64_t callee_uid, const char* caller_public,
                           const char* callee_public, const char* caller_name,
                           const char* callee_name, const char* tipo,
-                          const char* caller_ip, const char* caller_phone) {
+                          const char* caller_ip, const char* caller_phone,
+                          int e2ee_v, const char* e2ee_algs,
+                          int e2ee_confirm) {
     if (!call_id || !*call_id || caller_uid == 0 || callee_uid == 0) return 0;
     time_t now = time(NULL);
     pthread_mutex_lock(&g_lock);
@@ -93,6 +95,9 @@ int telegram_calls_upsert(const char* call_id, int64_t caller_uid,
     copy_str(c->tipo, sizeof(c->tipo), tipo);
     copy_str(c->caller_ip, sizeof(c->caller_ip), caller_ip);
     copy_str(c->caller_phone, sizeof(c->caller_phone), caller_phone);
+    c->caller_e2ee_v = e2ee_v;
+    c->caller_e2ee_confirm = e2ee_confirm;
+    copy_str(c->caller_e2ee_algs, sizeof(c->caller_e2ee_algs), e2ee_algs);
     if (prev_state < 0 || prev_state == 2 || prev_state == 3)
         c->state = 0;
     c->updated = now;
@@ -113,7 +118,8 @@ int telegram_calls_get(const char* call_id, telegram_call_t* out) {
 
 int telegram_calls_accept(const char* call_id, int64_t callee_uid,
                           const char* callee_ip, const char* callee_phone,
-                          telegram_call_t* out) {
+                          int e2ee_v, const char* e2ee_algs,
+                          int e2ee_confirm, telegram_call_t* out) {
     if (!call_id || callee_uid == 0) return 0;
     time_t now = time(NULL);
     pthread_mutex_lock(&g_lock);
@@ -127,6 +133,10 @@ int telegram_calls_accept(const char* call_id, int64_t callee_uid,
                  callee_ip);
         copy_str(g_calls[idx].callee_phone, sizeof(g_calls[idx].callee_phone),
                  callee_phone);
+        g_calls[idx].callee_e2ee_v = e2ee_v;
+        g_calls[idx].callee_e2ee_confirm = e2ee_confirm;
+        copy_str(g_calls[idx].callee_e2ee_algs,
+                 sizeof(g_calls[idx].callee_e2ee_algs), e2ee_algs);
         g_calls[idx].updated = now;
         if (out) *out = g_calls[idx];
         ok = 1;

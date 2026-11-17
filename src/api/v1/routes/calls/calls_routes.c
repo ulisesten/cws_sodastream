@@ -16,6 +16,8 @@
 #include "configuration.h"
 #include "jwt.h"
 #include "integrations/telegram/telegram_calls.h"
+#include "domain/calls_identity_domain.h"
+#include "api/v1/routes/users/domain/users_domain.h"
 #include "ws_api/v1/ws_v1.h"
 
 #define CALL_BODY_MAX (256u * 1024u)
@@ -160,6 +162,42 @@ static int valid_call_id(const char* s) {
         return 0;
     }
     return 1;
+}
+
+static int valid_public_id(const char* s) {
+    if (!s || strlen(s) != 12) return 0;
+    for (const char* p = s; *p; p++) {
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+            (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')
+            continue;
+        return 0;
+    }
+    return 1;
+}
+
+static const sql_value_t* row_field(const sql_result_t* out, size_t row,
+                                    const char* name) {
+    if (!out || row >= out->nrows) return NULL;
+    for (size_t c = 0; c < out->ncols; c++) {
+        const char* cn = out->columns[c].name;
+        if (cn && strcmp(cn, name) == 0) return &out->rows[row].cols[c];
+    }
+    return NULL;
+}
+
+static const char* row_str(const sql_result_t* out, size_t row,
+                           const char* name) {
+    const sql_value_t* v = row_field(out, row, name);
+    if (!v || v->is_null || v->type != SQL_COL_STRING || !v->val.as_string)
+        return NULL;
+    return v->val.as_string;
+}
+
+static int64_t row_i64(const sql_result_t* out, size_t row, const char* name,
+                       int64_t def) {
+    const sql_value_t* v = row_field(out, row, name);
+    if (!v || v->is_null || v->type != SQL_COL_INT) return def;
+    return v->val.as_int;
 }
 
 static int is_participant(const telegram_call_t* c, int64_t uid) {
@@ -515,6 +553,85 @@ static CWS_HANDLER(calls_ice_candidate_handler) {
               "{\"success\":true,\"error\":0,\"data\":{\"relayed\":true}}");
 }
 
+/* ------------------------------------------------------------------ */
+/* POST /identity  { device_id, identity_key }                         */
+/* ------------------------------------------------------------------ */
+static CWS_HANDLER(calls_identity_put_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { send_error(res, 401, "No autorizado"); return; }
+    char* body = body_dup(req);
+    char* device = NULL;
+    char* key = NULL;
+    if (body) {
+        jwt_json_get_string(body, "device_id", &device);
+        jwt_json_get_string(body, "identity_key", &key);
+    }
+    if (!device || strlen(device) < 1 || strlen(device) > 64 ||
+        !key || strlen(key) < 1 || strlen(key) > 500) {
+        free(body); free(device); free(key);
+        send_error(res, 400, "device_id (1-64) e identity_key (1-500) requeridos");
+        return;
+    }
+    if (!calls_identity_upsert(u->usu_id, device, key)) {
+        free(body); free(device); free(key);
+        send_error(res, 500, "No se pudo guardar la identidad");
+        return;
+    }
+    free(body); free(device); free(key);
+    send_json(res, 200,
+              "{\"success\":true,\"error\":0,\"msg\":\"Identidad guardada\"}");
+}
+
+/* ------------------------------------------------------------------ */
+/* GET /identity/:usu_id_public                                        */
+/* ------------------------------------------------------------------ */
+static CWS_HANDLER(calls_identity_get_handler) {
+    const jwt_user_t* u = authorization_mobile_request_user(req);
+    if (!u) { send_error(res, 401, "No autorizado"); return; }
+    (void)u;
+    char* public_id = param_dup(req, "usu_id_public");
+    if (!valid_public_id(public_id)) {
+        free(public_id);
+        send_error(res, 400, "usu_id_public inválido");
+        return;
+    }
+    sql_result_t* dao = users_domain_by_public_id(public_id);
+    int64_t uid = dao ? row_i64(dao, 0, "usu_id", 0) : 0;
+    if (dao) sql_result_free(dao);
+    if (uid == 0) {
+        free(public_id);
+        send_error(res, 404, "Usuario no encontrado");
+        return;
+    }
+    sql_result_t* ids = calls_identity_list(uid);
+    if (!ids) {
+        free(public_id);
+        send_error(res, 500, "No se pudo consultar la identidad");
+        return;
+    }
+    sb_t b = {0};
+    sb_puts(&b, "{\"success\":true,\"error\":0,\"data\":{\"identities\":[");
+    if (ids) {
+        for (size_t i = 0; i < ids->nrows; i++) {
+            const char* dev = row_str(ids, i, "lid_dispositivo");
+            const char* key = row_str(ids, i, "lid_pub");
+            char* de = json_escape_alloc(dev ? dev : "");
+            char* ke = json_escape_alloc(key ? key : "");
+            if (de && ke)
+                sb_printf(&b, "%s{\"device_id\":\"%s\",\"identity_key\":\"%s\"}",
+                          i ? "," : "", de, ke);
+            free(de); free(ke);
+        }
+        sql_result_free(ids);
+    }
+    sb_puts(&b, "]}}");
+    free(public_id);
+    if (!b.data) { send_error(res, 500, "Sin memoria"); return; }
+    cws_response_status(res, 200);
+    cws_response_body_owned(res, b.data, b.len, CWS_MT_APPLICATION_JSON);
+    cws_response_send(res);
+}
+
 /* GET /:call_id/ice (credenciales) y POST /:call_id/ice (candidate)
  * comparten path; cws guarda un método por path, así que se despacha. */
 static CWS_HANDLER(calls_ice_path_handler) {
@@ -540,6 +657,9 @@ cws_router_t* calls_routes(void) {
     cws_router_t* r = cws_router_new();
     if (!r) return NULL;
     cws_router_use(r, cws_mw_authorization_mobile_verify);
+    cws_router_add(r, CWS_M_POST, "/identity", calls_identity_put_handler);
+    cws_router_add(r, CWS_M_GET, "/identity/:usu_id_public",
+                   calls_identity_get_handler);
     cws_router_add(r, CWS_M_UNKNOWN, "/:call_id/ice", calls_ice_path_handler);
     cws_router_add(r, CWS_M_GET, "/:call_id", calls_get_handler);
     cws_router_add(r, CWS_M_POST, "/:call_id/sdp", calls_sdp_handler);

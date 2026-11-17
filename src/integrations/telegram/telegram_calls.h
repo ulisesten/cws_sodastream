@@ -15,6 +15,7 @@ extern "C" {
 #define TC_NAME_MAX    128
 #define TC_PUBLIC_MAX  16
 #define TC_TIPO_MAX    16
+#define TC_ALGS_MAX    64
 
 typedef struct telegram_call {
     char     call_id[TC_CALL_ID_MAX];
@@ -29,6 +30,12 @@ typedef struct telegram_call {
     char     callee_ip[TC_IP_MAX];
     char     caller_phone[TC_PHONE_MAX];
     char     callee_phone[TC_PHONE_MAX];
+    int      caller_e2ee_v;
+    int      caller_e2ee_confirm;
+    char     caller_e2ee_algs[TC_ALGS_MAX];
+    int      callee_e2ee_v;
+    int      callee_e2ee_confirm;
+    char     callee_e2ee_algs[TC_ALGS_MAX];
     int      state; /* 0 ringing, 1 accepted, 2 ended, 3 rejected */
     time_t   created;
     time_t   updated;
@@ -40,13 +47,16 @@ int telegram_calls_upsert(const char* call_id, int64_t caller_uid,
                           int64_t callee_uid, const char* caller_public,
                           const char* callee_public, const char* caller_name,
                           const char* callee_name, const char* tipo,
-                          const char* caller_ip, const char* caller_phone);
+                          const char* caller_ip, const char* caller_phone,
+                          int e2ee_v, const char* e2ee_algs,
+                          int e2ee_confirm);
 
 int telegram_calls_get(const char* call_id, telegram_call_t* out);
 
 int telegram_calls_accept(const char* call_id, int64_t callee_uid,
                           const char* callee_ip, const char* callee_phone,
-                          telegram_call_t* out);
+                          int e2ee_v, const char* e2ee_algs,
+                          int e2ee_confirm, telegram_call_t* out);
 
 int telegram_calls_reject(const char* call_id, int64_t callee_uid,
                           telegram_call_t* out);

@@ -97,43 +97,55 @@ También: `call.rejected`, `call.ended`.
 ```
 Solicitante                         Servidor                         Receptor
     | POST /notify ------------------->|                                 |
-    | {callee_public, call_id, tipo}   |-- WSS call.incoming ----------->|
-    |                                  |                                 |
+    | {callee_public, tipo, e2ee}      |-- WSS call.incoming ----------->|
+    |<-- call_id (servidor) -----------|                                 |
     |                                  |<-- POST /accept ----------------|
-    |<-- WSS call.accepted ------------|    {call_id, ip?, telefono?}    |
+    |<-- WSS call.accepted ------------|    {call_id, e2ee, ip?, tel?}   |
     |                                  |                                 |
     | (SDP/ICE por /calls/:id -> WSS)  |                                 |
 ```
 
-1. El solicitante crea `call_id` (nanoid) y llama:
+1. El solicitante llama (el `call_id` lo genera el **servidor**):
 ```http
 POST /api/v1/integrations/telegram/notify
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{ "usu_id_public": "<receptor>", "call_id": "<id>", "tipo": "audio" }
+{
+  "usu_id_public": "<receptor>",
+  "tipo": "audio",
+  "e2ee": { "v": 1, "algs": ["gost"], "confirm": true }
+}
 ```
+   - `CALL_E2EE_REQUIRED=true` (default) exige `e2ee`; sin eso devuelve
+     `426 E2EE_UNSUPPORTED`. `CALL_ID_SERVER=true` (default) ignora cualquier
+     `call_id` del cliente.
 2. Respuesta:
 ```json
 { "success": true, "data": {
-  "call_id": "<id>", "ws_online": true, "telegram_sent": false,
-  "callee": "Nombre" } }
+  "call_id": "<id-servidor>", "ws_online": true, "telegram_sent": false,
+  "callee": "Nombre", "e2ee": true } }
 ```
+   - **Usa el `call_id` de la respuesta** para `/accept`, SDP/ICE y el deep link.
    - `ws_online=true`: el receptor tiene WSS; muestra “llamando”.
    - `ws_online=false` y `telegram_sent=true`: aviso por Telegram.
    - Ambos `false`: receptor no disponible; muestra error/missed.
-3. El receptor recibe `call.incoming`; muestra pantalla de llamada entrante.
+3. El receptor recibe `call.incoming` con `e2ee` del solicitante; si no anuncia
+   `gost`, debe rechazar (`fail-closed`).
 4. Acepta:
 ```http
 POST /api/v1/integrations/telegram/accept
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{ "call_id": "<id>" }
+{
+  "call_id": "<id-servidor>",
+  "e2ee": { "v": 1, "algs": ["gost"], "confirm": true }
+}
 ```
    - `ip`/`telefono` son opcionales; si los omites, el servidor intenta
      `X-Forwarded-For`/`X-Real-IP`.
-5. El solicitante recibe `call.accepted` con la IP del receptor.
+5. El solicitante recibe `call.accepted` con la IP y el `e2ee` del receptor.
 6. Rechazar/terminar:
 ```http
 POST /api/v1/integrations/telegram/reject   { "call_id": "<id>" }
@@ -156,7 +168,7 @@ idle -> incoming_ringing -> accepted -> ended
 - Ringing expira a los 90 s; activa 6 h.
 - El estado es **en memoria**: si el servidor reinicia, `/accept` puede dar
   409; muestra “llamada expirada”.
-- `call_id` es generado por el cliente; no lo reutilices para otra llamada.
+- `call_id` es generado por el servidor; guárdalo y no lo reutilices.
 
 ## 5. Telegram (opcional)
 
@@ -205,8 +217,8 @@ Registra con `xdg-mime default cws.desktop x-scheme-handler/cws`.
 
 | Método | Ruta | Auth | Body |
 |---|---|---|---|
-| POST | `/api/v1/integrations/telegram/notify` | Bearer | `usu_id_public`, `call_id`, `tipo`, `ip?`, `telefono?` |
-| POST | `/api/v1/integrations/telegram/accept` | Bearer | `call_id`, `ip?`, `telefono?` |
+| POST | `/api/v1/integrations/telegram/notify` | Bearer | `usu_id_public`, `tipo`, `e2ee`, `ip?`, `telefono?`; `call_id` lo devuelve el servidor |
+| POST | `/api/v1/integrations/telegram/accept` | Bearer | `call_id`, `e2ee`, `ip?`, `telefono?` |
 | POST | `/api/v1/integrations/telegram/reject` | Bearer | `call_id` |
 | POST | `/api/v1/integrations/telegram/end` | Bearer | `call_id` |
 | GET | `/api/v1/integrations/telegram/pending` | Bearer | — |
@@ -215,8 +227,22 @@ Registra con `xdg-mime default cws.desktop x-scheme-handler/cws`.
 | POST | `/api/v1/integrations/telegram/unlink` | Bearer | — |
 
 Errores: `400` datos inválidos, `401` token, `404` usuario/llamada,
-`409` llamada no ringing/no es tuya, `503` bot Telegram deshabilitado (solo
-`/link`). En `401` refresca el token y reintenta una vez.
+`409` llamada no ringing/no es tuya, `426` `E2EE_UNSUPPORTED`/
+`E2EE_VERSION_UNSUPPORTED`, `503` bot Telegram deshabilitado (solo `/link`).
+En `401` refresca el token y reintenta una vez.
+
+### Identidad pública GOST
+
+Para que el cliente pueda firmar/verificar el atributo SDP y evitar MITM:
+
+- `POST /api/v1/calls/identity` (Bearer)
+  `{ "device_id": "...", "identity_key": "<base64>" }` → guarda/actualiza la
+  clave pública del dispositivo.
+- `GET /api/v1/calls/identity/:usu_id_public` (Bearer) → lista
+  `identities: [{device_id, identity_key}]` del usuario.
+
+El servidor solo almacena claves públicas; la verificación (TOFU/safety
+number) es del cliente. Requiere aplicar `db_sodastream/video_llamadas_identidad.sql`.
 
 ## 8. Android
 

@@ -15,6 +15,7 @@
 #include "integrations/telegram/telegram.h"
 #include "integrations/telegram/telegram_domain.h"
 #include "integrations/telegram/telegram_calls.h"
+#include "integrations/telegram/telegram_json.h"
 #include "ws_api/v1/ws_v1.h"
 #include "api/v1/routes/users/domain/users_domain.h"
 
@@ -60,6 +61,96 @@ static void send_error(cws_response_t* res, int status, const char* msg) {
     n = snprintf(body + len, sizeof(body) - len, "\"}");
     if (n < 0) len = 0; else len += (size_t)n;
     send_json(res, status, body);
+}
+
+static void send_error_code(cws_response_t* res, int status,
+                            const char* code, const char* msg) {
+    char body[640];
+    int n = snprintf(body, sizeof(body),
+                     "{\"success\":false,\"error\":1,\"code\":\"");
+    size_t len = n > 0 ? (size_t)n : 0;
+    len += json_escape(body + len, sizeof(body) - len - 32, code);
+    n = snprintf(body + len, sizeof(body) - len, "\",\"msg\":\"");
+    if (n < 0) len = 0; else len += (size_t)n;
+    len += json_escape(body + len, sizeof(body) - len - 8, msg);
+    n = snprintf(body + len, sizeof(body) - len, "\"}");
+    if (n < 0) len = 0; else len += (size_t)n;
+    send_json(res, status, body);
+}
+
+static int cfg_bool(const char* key, int def) {
+    const char* v = cfg_getenv(key);
+    if (!v || !*v) return def;
+    return !(strcmp(v, "0") == 0 || strcasecmp(v, "false") == 0 ||
+             strcasecmp(v, "no") == 0);
+}
+
+typedef struct {
+    int  present;
+    int  v;
+    int  confirm;
+    int  has_gost;
+    char algs[64];
+} e2ee_cap_t;
+
+static int parse_e2ee(const char* body, e2ee_cap_t* cap) {
+    memset(cap, 0, sizeof(*cap));
+    if (!body) return 0;
+    tj_value_t* root = tj_parse(body, strlen(body));
+    if (!root) return 0;
+    tj_value_t* e = tj_obj_get(root, "e2ee");
+    if (!e || tj_type(e) != TJ_OBJ) {
+        tj_free(root);
+        return 0;
+    }
+    cap->present = 1;
+    cap->v = (int)tj_int(tj_obj_get(e, "v"));
+    cap->confirm = tj_bool(tj_obj_get(e, "confirm"));
+    tj_value_t* algs = tj_obj_get(e, "algs");
+    size_t n = tj_arr_len(algs);
+    for (size_t i = 0; i < n; i++) {
+        const char* a = tj_str(tj_arr_get(algs, i));
+        if (a && strcmp(a, "gost") == 0) {
+            cap->has_gost = 1;
+            snprintf(cap->algs, sizeof(cap->algs), "gost");
+            break;
+        }
+    }
+    tj_free(root);
+    return 1;
+}
+
+static int e2ee_validate(const e2ee_cap_t* cap, cws_response_t* res) {
+    int required = cfg_bool("CALL_E2EE_REQUIRED", 1);
+    if (!cap->present) {
+        if (required) {
+            send_error_code(res, 426, "E2EE_UNSUPPORTED",
+                            "La llamada exige E2EE GOST");
+            return 0;
+        }
+        return 1;
+    }
+    if (cap->v != 1) {
+        send_error_code(res, 426, "E2EE_VERSION_UNSUPPORTED",
+                        "Versión E2EE no soportada");
+        return 0;
+    }
+    if (!cap->has_gost) {
+        send_error_code(res, 426, "E2EE_UNSUPPORTED",
+                        "Se requiere el algoritmo gost");
+        return 0;
+    }
+    return 1;
+}
+
+static int e2ee_json(char* out, size_t cap_size, const e2ee_cap_t* cap) {
+    if (!cap || !cap->present || cap->v <= 0) {
+        snprintf(out, cap_size, "null");
+        return 0;
+    }
+    return snprintf(out, cap_size,
+                    "{\"v\":%d,\"algs\":[\"%s\"],\"confirm\":%s}",
+                    cap->v, cap->algs, cap->confirm ? "true" : "false");
 }
 
 static char* body_dup(const cws_request_t* req) {
@@ -283,11 +374,42 @@ static CWS_HANDLER(telegram_notify_handler) {
         jwt_json_get_string(body, "ip", &body_ip);
         jwt_json_get_string(body, "telefono", &telefono);
     }
-    if (!valid_public_id(public_id) || !valid_call_id(call_id) ||
-        !valid_tipo(tipo)) {
+    if (!valid_public_id(public_id) || !valid_tipo(tipo)) {
         free(body); free(public_id); free(call_id); free(tipo);
         free(body_ip); free(telefono);
-        send_error(res, 400, "usu_id_public, call_id y tipo válidos son requeridos");
+        send_error(res, 400, "usu_id_public y tipo válidos son requeridos");
+        return;
+    }
+    e2ee_cap_t cap;
+    parse_e2ee(body, &cap);
+    if (!e2ee_validate(&cap, res)) {
+        free(body); free(public_id); free(call_id); free(tipo);
+        free(body_ip); free(telefono);
+        return;
+    }
+
+    int server_id = cfg_bool("CALL_ID_SERVER", 1);
+    if (server_id) {
+        free(call_id);
+        call_id = NULL;
+        for (int i = 0; i < 8; i++) {
+            char* id = jwt_core_nanoid(32);
+            if (!id) break;
+            telegram_call_t ex;
+            memset(&ex, 0, sizeof(ex));
+            if (!telegram_calls_get(id, &ex)) { call_id = id; break; }
+            free(id);
+        }
+        if (!call_id) {
+            free(body); free(public_id); free(tipo);
+            free(body_ip); free(telefono);
+            send_error(res, 500, "No se pudo generar call_id");
+            return;
+        }
+    } else if (!valid_call_id(call_id)) {
+        free(body); free(public_id); free(call_id); free(tipo);
+        free(body_ip); free(telefono);
+        send_error(res, 400, "call_id inválido");
         return;
     }
 
@@ -313,17 +435,32 @@ static CWS_HANDLER(telegram_notify_handler) {
         return;
     }
 
+    if (!server_id) {
+        telegram_call_t ex;
+        memset(&ex, 0, sizeof(ex));
+        if (telegram_calls_get(call_id, &ex) &&
+            (ex.caller_uid != u->usu_id || ex.callee_uid != callee)) {
+            free(body); free(public_id); free(call_id); free(tipo);
+            free(body_ip); free(telefono);
+            send_error_code(res, 409, "CALL_ID_CONFLICT",
+                            "call_id ya pertenece a otra llamada");
+            return;
+        }
+    }
+
     char caller_ip[TC_IP_MAX];
     request_ip(req, body_ip, caller_ip, sizeof(caller_ip));
     char caller_public[TC_PUBLIC_MAX] = "";
     telegram_domain_user_public(u->usu_id, caller_public,
                                 sizeof(caller_public), NULL, 0);
 
-    /* El estado en memoria es efímero: sirve para que el receptor acepte y
-     * se vinculen las IP/teléfono de ambos. */
+    int e2ee_v = cap.present ? cap.v : 0;
+    const char* e2ee_algs = cap.present ? cap.algs : "";
+    int e2ee_confirm = cap.present ? cap.confirm : 0;
+
     telegram_calls_upsert(call_id, u->usu_id, callee, caller_public, public_id,
                           u->usu_nombre, callee_name_copy, tipo, caller_ip,
-                          telefono);
+                          telefono, e2ee_v, e2ee_algs, e2ee_confirm);
     if (caller_ip[0])
         telegram_domain_external_link(u->usu_id, 2, caller_ip);
     if (telefono && *telefono)
@@ -331,17 +468,19 @@ static CWS_HANDLER(telegram_notify_handler) {
 
     int ws_online = 0;
     int tg_sent = telegram_notify_bridge(callee, caller_public, u->usu_nombre,
-                                         caller_ip, call_id, tipo, &ws_online);
+                                         caller_ip, call_id, tipo, e2ee_v,
+                                         e2ee_algs, e2ee_confirm, &ws_online);
 
     char callee_esc[256];
     json_escape(callee_esc, sizeof(callee_esc), callee_name_copy);
-    char resp[640];
+    char resp[768];
     snprintf(resp, sizeof(resp),
              "{\"success\":true,\"error\":0,\"data\":{"
              "\"call_id\":\"%s\",\"ws_online\":%s,\"telegram_sent\":%s,"
-             "\"callee\":\"%s\"}}",
+             "\"callee\":\"%s\",\"e2ee\":%s}}",
              call_id, ws_online ? "true" : "false",
-             tg_sent ? "true" : "false", callee_esc);
+             tg_sent ? "true" : "false", callee_esc,
+             cap.present ? "true" : "false");
     free(body); free(public_id); free(call_id); free(tipo);
     free(body_ip); free(telefono);
     send_json(res, 200, resp);
@@ -368,12 +507,23 @@ static CWS_HANDLER(telegram_accept_handler) {
         send_error(res, 400, "call_id requerido");
         return;
     }
+    e2ee_cap_t cap;
+    parse_e2ee(body, &cap);
+    if (!e2ee_validate(&cap, res)) {
+        free(body); free(call_id); free(body_ip); free(telefono);
+        return;
+    }
 
     char callee_ip[TC_IP_MAX];
     request_ip(req, body_ip, callee_ip, sizeof(callee_ip));
+    int e2ee_v = cap.present ? cap.v : 0;
+    const char* e2ee_algs = cap.present ? cap.algs : "";
+    int e2ee_confirm = cap.present ? cap.confirm : 0;
+
     telegram_call_t call;
     memset(&call, 0, sizeof(call));
-    if (!telegram_calls_accept(call_id, u->usu_id, callee_ip, telefono, &call)) {
+    if (!telegram_calls_accept(call_id, u->usu_id, callee_ip, telefono,
+                               e2ee_v, e2ee_algs, e2ee_confirm, &call)) {
         free(body); free(call_id); free(body_ip); free(telefono);
         send_error(res, 409, "Llamada no encontrada, ya aceptada o no es tuya");
         return;
@@ -384,27 +534,29 @@ static CWS_HANDLER(telegram_accept_handler) {
         telegram_domain_external_link(u->usu_id, 1, telefono);
 
     char pub[TC_PUBLIC_MAX], name[TC_NAME_MAX], ip[TC_IP_MAX], tipo[TC_TIPO_MAX];
+    char e2ee_evt[128];
     json_escape(pub, sizeof(pub), call.callee_public);
     json_escape(name, sizeof(name), call.callee_name);
     json_escape(ip, sizeof(ip), callee_ip);
     json_escape(tipo, sizeof(tipo), call.tipo);
-    char evt[768];
+    e2ee_json(e2ee_evt, sizeof(e2ee_evt), &cap);
+    char evt[1024];
     snprintf(evt, sizeof(evt),
              "{\"call_id\":\"%s\",\"estado\":\"accepted\","
              "\"from_public\":\"%s\",\"from\":\"%s\",\"tipo\":\"%s\","
-             "\"ip\":\"%s\"}",
-             call_id, pub, name, tipo, ip);
+             "\"ip\":\"%s\",\"e2ee\":%s}",
+             call_id, pub, name, tipo, ip, e2ee_evt);
     emit_event(call.caller_uid, "call.accepted", evt);
 
     char caller_pub[TC_PUBLIC_MAX], caller_name[TC_NAME_MAX];
     json_escape(caller_pub, sizeof(caller_pub), call.caller_public);
     json_escape(caller_name, sizeof(caller_name), call.caller_name);
-    char resp[640];
+    char resp[768];
     snprintf(resp, sizeof(resp),
              "{\"success\":true,\"error\":0,\"data\":{"
              "\"estado\":\"accepted\",\"caller_public\":\"%s\","
-             "\"caller_name\":\"%s\",\"tipo\":\"%s\"}}",
-             caller_pub, caller_name, tipo);
+             "\"caller_name\":\"%s\",\"tipo\":\"%s\",\"e2ee\":%s}}",
+             caller_pub, caller_name, tipo, cap.present ? "true" : "false");
     free(body); free(call_id); free(body_ip); free(telefono);
     send_json(res, 200, resp);
 }
