@@ -6,6 +6,19 @@ Actualizado: 2026-11-17. Complementa `docs/endpoints.md` (dispositivos) y
 Objetivo: recibir `call.incoming` y mensajes cuando el WSS está caído o la app
 está en segundo plano, sin depender del bot de Telegram.
 
+## Estado (2026-11-17)
+
+- Cliente Android **integrado** con el proyecto `ctburst`
+  (`app/google-services.json`): plugin de Google, Firebase Messaging,
+  `PushService`, canales `calls_incoming`/`messages`, full-screen intent y
+  deep link `cws://call/<id>`.
+- El token FCM se guarda en `device_identity.xml` y se intenta publicar en
+  `POST /users/device`. La API de producción aún no tiene ese endpoint (404),
+  así que el registro quedará pendiente hasta desplegarla.
+- **Falta el service account del servidor** (archivo distinto de
+  `google-services.json`) para enviar push con HTTP v1. Sin él solo se puede
+  probar desde la consola de Firebase.
+
 ## 1. Cliente Android
 
 ### 1.1 Firebase
