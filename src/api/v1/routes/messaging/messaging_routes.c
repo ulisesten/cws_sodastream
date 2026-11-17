@@ -598,7 +598,9 @@ static int append_json_id(strbuf_t* b, const char* id, int* first) {
 /* ------------------------------------------------------------------ */
 
 /*
- * Genera el id público de mensajería del usuario autenticado y lo guarda.
+ * Habilita la mensajería del usuario autenticado y devuelve su id público.
+ * Es idempotente: si ya tiene uno, se reutiliza (no se rota en cada setup,
+ * que duplicaba contactos y dejaba ids muertos en el cliente).
  *   201 {"success":true,"error":0,"msg":"Mensajeria instantanea habilitada",
  *        "data":{"usu_id_public":"<nanoid12>","ws_path":"/ws/v1"}}
  */
@@ -606,16 +608,26 @@ static CWS_HANDLER(messaging_setup_handler) {
     const jwt_user_t* u = authorization_mobile_request_user(req);
     if (!u) { cws_response_send_error(res, 401); return; }
 
-    char* public_id = jwt_core_nanoid(USU_ID_PUBLIC_LEN);
-    if (!public_id) { cws_response_send_error(res, 500); return; }
-
-    sql_result_t* dao = users_domain_set_public_id(u->usu_id, public_id);
-    if (!dao) {
-        free(public_id);
-        cws_response_send_error(res, 500);
-        return;
+    char* public_id = NULL;
+    sql_result_t* existing = users_domain_get_public_id(u->usu_id);
+    const char* current = existing ? row_str(existing, 0, "usu_id_public") : NULL;
+    if (current && current[0] != '\0') {
+        public_id = strdup(current);
     }
-    sql_result_free(dao);
+    sql_result_free(existing);
+
+    if (!public_id) {
+        public_id = jwt_core_nanoid(USU_ID_PUBLIC_LEN);
+        if (!public_id) { cws_response_send_error(res, 500); return; }
+
+        sql_result_t* dao = users_domain_set_public_id(u->usu_id, public_id);
+        if (!dao) {
+            free(public_id);
+            cws_response_send_error(res, 500);
+            return;
+        }
+        sql_result_free(dao);
+    }
 
     char body[512];
     int n = snprintf(body, sizeof(body),

@@ -56,6 +56,16 @@ sql_result_t* users_domain_set_public_id(int64_t usu_id,
 sql_result_t* users_domain_by_public_id(const char* public_id);
 
 /**
+ * \brief users_domain_get_public_id: obtiene el id público actual de un
+ *        usuario (procUsersCons, tipoConsulta = 5).
+ *
+ * Devuelve filas con `usu_id, usu_id_public`. Se usa para que `/setup` sea
+ * idempotente y no rote el id en cada llamada. \return resultado malloc,
+ * NULL en fallo.
+ */
+sql_result_t* users_domain_get_public_id(int64_t usu_id);
+
+/**
  * \brief users_domain_list: lista de usuarios con mensajería habilitada
  *        (procUsersCons, tipoConsulta = 4), excluyendo `exclude_usu_id`.
  *

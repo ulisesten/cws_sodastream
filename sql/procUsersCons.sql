@@ -20,7 +20,8 @@ BEGIN
         @CONS_USU_SIGNIN smallint = 1,
         @USUARIO_INFO_CONS smallint = 2,
         @USU_BY_ID_PUBLIC_CONS smallint = 3,
-        @USU_LIST_CONS smallint = 4
+        @USU_LIST_CONS smallint = 4,
+        @USU_BY_ID_CONS smallint = 5
 
     -- IF @tipoConsulta = 'USUARIOS_CONS' BEGIN
 
@@ -72,6 +73,19 @@ BEGIN
             cat_usuarios
         WHERE
             usu_id_public = @usu_id_public
+
+    END
+
+    -- Identificador público actual del usuario (setup idempotente).
+    IF @tipoConsulta = @USU_BY_ID_CONS BEGIN
+
+        SELECT TOP 1
+            usu_id,
+            usu_id_public
+        FROM
+            cat_usuarios
+        WHERE
+            usu_id = @usu_id
 
     END
 

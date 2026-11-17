@@ -14,6 +14,20 @@ Actualizado: 2026-11-16. Complementa `docs/calls_e2ee.md` (contrato) y
 - Código de seguridad (Streebog-256 de la clave) visible en la pantalla de
   llamada para comparación verbal.
 
+## Cliente Android (2026-11-16)
+
+- `notify`/`accept` envían `e2ee: {v:1, algs:["gost"], confirm:true}`.
+- Se usa el `call_id` que devuelve el servidor; si el servidor es antiguo y
+  no lo devuelve, se conserva el provisional (compatibilidad).
+- `call.incoming`/`call.accepted` con `e2ee` presente e incompatible se
+  rechazan. Si el campo no existe (servidor antiguo) se continúa y el SDP
+  sigue exigiendo `a=x-gost-e2ee` + clave VKO (fail-closed en media).
+- Registro de dispositivo: `POST /users/device` tras el login, con
+  `device_id` estable (UUID persistido) y `plataforma=1`.
+- Pendiente cliente: firmar/verificar el SDP con la identidad pública
+  (`/calls/identity`) y TOFU/safety number; el directorio ya está en el
+  servidor nuevo.
+
 ## P0 — seguridad (bloquea producción)
 
 ### 1. Autenticación de la clave efímera (MITM del signaling)

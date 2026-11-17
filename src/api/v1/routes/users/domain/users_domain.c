@@ -28,6 +28,8 @@
 #define CONS_USU_BY_ID_PUBLIC 3
 /** CONS_USU_LIST: tipoConsulta del listado de usuarios con chat. */
 #define CONS_USU_LIST 4
+/** CONS_USU_BY_ID: obtiene usu_id_public por usu_id (setup idempotente). */
+#define CONS_USU_BY_ID 5
 
 static sql_eject_t* g_sql = NULL;
 
@@ -180,6 +182,28 @@ sql_result_t* users_domain_by_public_id(const char* public_id) {
     params[1].name = "usu_id_public";
     params[1].type = SQL_PT_STRING;
     params[1].val.as_string = public_id;
+
+    sql_result_t* out = (sql_result_t*)calloc(1, sizeof(*out));
+    if (!out) return NULL;
+    int rc = sql_eject_store(g_sql, "procUsersCons", USERS_DB, params, 2,
+                             out);
+    if (rc != CWS_OK) {
+        sql_result_free(out);
+        return NULL;
+    }
+    return out;
+}
+
+sql_result_t* users_domain_get_public_id(int64_t usu_id) {
+    if (!g_sql || usu_id == 0) return NULL;
+
+    sql_param_t params[2];
+    params[0].name = "tipoConsulta";
+    params[0].type = SQL_PT_INT;
+    params[0].val.as_int = CONS_USU_BY_ID;
+    params[1].name = "usu_id";
+    params[1].type = SQL_PT_INT;
+    params[1].val.as_int = usu_id;
 
     sql_result_t* out = (sql_result_t*)calloc(1, sizeof(*out));
     if (!out) return NULL;
