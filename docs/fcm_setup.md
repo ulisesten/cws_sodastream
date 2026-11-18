@@ -6,18 +6,22 @@ Actualizado: 2026-11-17. Complementa `docs/endpoints.md` (dispositivos) y
 Objetivo: recibir `call.incoming` y mensajes cuando el WSS está caído o la app
 está en segundo plano, sin depender del bot de Telegram.
 
-## Estado (2026-11-17)
+## Estado (2026-11-18)
 
-- Cliente Android **integrado** con el proyecto `ctburst`
-  (`app/google-services.json`): plugin de Google, Firebase Messaging,
-  `PushService`, canales `calls_incoming`/`messages`, full-screen intent y
-  deep link `cws://call/<id>`.
-- El token FCM se guarda en `device_identity.xml` y se intenta publicar en
-  `POST /users/device`. La API de producción aún no tiene ese endpoint (404),
-  así que el registro quedará pendiente hasta desplegarla.
-- **Falta el service account del servidor** (archivo distinto de
-  `google-services.json`) para enviar push con HTTP v1. Sin él solo se puede
+- **Mecanismo actual de notificaciones:** WSS (`call.incoming`) y Telegram
+  como fallback; no hay FCM operativo.
+- **Cliente Android:** existe la guía/integración preparada para `ctburst`
+  (`PushService`, canales, full-screen intent), pero **el APK actual no
+  incluye Firebase** (ver nota final). No está verificado end-to-end en este
+  workspace.
+- **Endpoint `/users/device`:** implementado en la API; requiere desplegar el
+  binario y aplicar `db_sodastream/usuarios_devices.sql`.
+- **Servidor FCM:** **no implementado**. Falta el service account
+  (`FCM_CREDENTIALS`), OAuth2 y el emisor HTTP v1; sin eso solo se puede
   probar desde la consola de Firebase.
+- El token FCM (si la app lo obtiene) se guarda en `device_identity.xml` y se
+  publica en `POST /users/device`; la tabla guarda `usd_push_token`, pero nada
+  lo envía todavía.
 
 ## 1. Cliente Android
 
