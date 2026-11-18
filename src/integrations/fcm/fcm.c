@@ -425,9 +425,10 @@ int fcm_send(const char* token, const char* payload_json,
     if (status >= 200 && status < 300) {
         rc = FCM_SENT;
     } else {
-        int invalid = strstr(resp, "UNREGISTERED") != NULL ||
-                      strstr(resp, "INVALID_ARGUMENT") != NULL ||
-                      status == 404;
+        /* Solo UNREGISTERED/404 invalidan el token. INVALID_ARGUMENT suele ser
+         * un payload mal formado (p. ej. clave reservada) y NO debe desactivar
+         * el dispositivo. */
+        int invalid = strstr(resp, "UNREGISTERED") != NULL || status == 404;
         if (err && errcap) {
             const char* p = strstr(resp, "\"message\"");
             snprintf(err, errcap, "FCM HTTP %ld%s", status, p ? p : "");
