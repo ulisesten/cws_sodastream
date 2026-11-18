@@ -28,8 +28,10 @@ API/WSS.
 - **C3 (RNG/IV) corregido** en el fork `webrtc-gost-build` commit
   `027d75b`: el nonce inicial usa `RAND_bytes` (con fallback
   `std::random_device`); se eliminó `srand(time(NULL))`/`rand()`. El AAR
-  `libwebrtc-gost.aar` se regenera y se sustituye en `app/libs/`; validar con
-  el test de loopback antes de distribuir.
+  `libwebrtc-gost.aar` se regeneró (sha256 `4375f2486aac8d94d5d6…`) y se
+  copió a `app/libs/`; la app compila. **Pendiente:** ejecutar el test de
+  loopback en dispositivo cuando se reconecten (ahora están desconectados)
+  antes de distribuir.
 - El resto de hallazgos sigue abierto salvo que se indique lo contrario.
 
 ## Críticos
