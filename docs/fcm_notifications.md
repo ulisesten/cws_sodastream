@@ -44,15 +44,17 @@ sin cambiar el emisor.
   = añadir una entrada de catálogo (+ handler de UI si es visible).
 - **Idempotencia**: `event_id`/`dedupe_key` (p. ej. `call_id`, `msg_id`) y
   outbox; FCM puede entregar duplicados.
-- **Ack = entregado visible**: el cliente solo manda `delivery.ack` cuando el
-  mensaje ya se pintó en el chat abierto o cuando la notificación se publicó
-  realmente. Un frame WS recibido pero no visible (app cerrada, ViewModel
-  muerto, notificación bloqueada) **no se ackea**; FCM hace el fallback.
+- **Ack = entregado visible**: el cliente manda `delivery.ack` con
+  `{event_id, device_id, shown:true}` **solo** cuando el mensaje ya se pintó en
+  el chat abierto o la notificación se publicó realmente. Un frame WS recibido
+  pero no visible (app cerrada, ViewModel muerto, notificación bloqueada) no
+  lleva `shown:true`; FCM hace el fallback.
 - **Entrega WSS + ack**: el servidor no decide por `ws_online`; encola FCM con
-  retardo (`FCM_ACK_TIMEOUT_MS`, default 2 s). Si el cliente envía
-  `delivery.ack` con `event_id`+`device_id`, se cancela el push de ese
-  dispositivo; si no, FCM lo envía. Un socket vivo sin ack **no** cuenta como
-  entregado.
+  retardo (`FCM_ACK_TIMEOUT_MS`, default 2 s). **Solo** un ack con
+  `shown:true` cancela el push de ese dispositivo. Un ack sin `shown` (o un
+  socket vivo) **no** cancela: FCM se envía igual. Regla: si no hay prueba de
+  que el usuario lo vio, se entrega por FCM; mejor duplicado que perdido, y el
+  cliente deduplica por `event_id`.
 - **Colapso**: `collapse_key` por llamada/chat para no apilar notificaciones.
 - **Multi-dispositivo**: fan-out a todos los dispositivos activos del usuario;
   excluir el dispositivo emisor cuando se conozca.

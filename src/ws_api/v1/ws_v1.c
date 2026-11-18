@@ -376,7 +376,35 @@ static void ws_on_message(cws_ws_socket_t* s, const char* event,
     free(esc_room);
 }
 
-/* delivery.ack {event_id, device_id?} -> cancela el push pendiente. */
+/* ¿La clave `name` viene como true/1 (booleano o string)? */
+static int json_flag_true(const char* j, const char* name) {
+    if (!j || !name) return 0;
+    char pat[64];
+    snprintf(pat, sizeof(pat), "\"%s\"", name);
+    const char* p = strstr(j, pat);
+    if (!p) return 0;
+    p += strlen(pat);
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p != ':') return 0;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (strncmp(p, "true", 4) == 0) return 1;
+    if (*p == '"' &&
+        (strncmp(p + 1, "true", 4) == 0 ||
+         (p[1] == '1' && p[2] == '"')))
+        return 1;
+    return *p == '1';
+}
+
+/*
+ * delivery.ack {event_id, device_id?, shown?}
+ *
+ * Recibir el evento por WSS NO es prueba de que el usuario lo vio. Por eso
+ * solo se cancela el FCM cuando el cliente afirma `shown=true` (la app lo
+ * mostró al usuario). Sin `shown`, el push sigue y FCM se envía. El cliente
+ * actual no manda `shown`, así que FCM siempre sale: mejor duplicado que
+ * perdido; el cliente deduplica por `event_id`.
+ */
 static void ws_on_delivery_ack(cws_ws_socket_t* s, const char* event,
                               const void* data, size_t len, void* ud) {
     (void)event; (void)ud;
@@ -391,10 +419,14 @@ static void ws_on_delivery_ack(cws_ws_socket_t* s, const char* event,
     jwt_json_get_string(z, "event_id", &event_id);
     jwt_json_get_string(z, "device_id", &device_id);
     if (event_id && *event_id) {
-        int ok = push_outbox_cancel(id->usu_id, event_id, device_id);
-        cws_log_info("ws delivery.ack event=%s device=%s cancelled=%d",
-                     event_id, device_id ? device_id : "",
-                     ok);
+        if (json_flag_true(z, "shown") || json_flag_true(z, "displayed")) {
+            int ok = push_outbox_cancel(id->usu_id, event_id, device_id);
+            cws_log_info("ws delivery.ack event=%s device=%s shown=1 cancelled=%d",
+                         event_id, device_id ? device_id : "", ok);
+        } else {
+            cws_log_info("ws delivery.ack event=%s device=%s shown=0 fcm=continua",
+                         event_id, device_id ? device_id : "");
+        }
     }
     free(event_id);
     free(device_id);

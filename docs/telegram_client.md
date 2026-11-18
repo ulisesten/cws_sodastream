@@ -130,10 +130,11 @@ Content-Type: application/json
    - `ws_online=true`: el receptor tiene WSS; muestra “llamando”.
    - `ws_online=false` y `telegram_sent=true`: aviso por Telegram.
    - Ambos `false`: receptor no disponible; muestra error/missed.
-3. El receptor recibe `call.incoming` con `e2ee` y `event_id`; debe enviar
-   `delivery.ack` (`{event_id, device_id}`) cuando lo recibe/procesa. Si el
-   ack llega antes de `FCM_ACK_TIMEOUT_MS` (default 2 s), se cancela el push;
-   si no, FCM lo envía. Si no anuncia `gost`, rechaza (`fail-closed`).
+3. El receptor recibe `call.incoming` con `e2ee` y `event_id`. Envía
+   `delivery.ack` (`{event_id, device_id, shown:true}`) **solo** cuando la
+   llamada ya se mostró al usuario; entonces se cancela el FCM de ese
+   dispositivo. Un ack sin `shown` no cancela: FCM se envía igual. Si no
+   anuncia `gost`, rechaza (`fail-closed`).
 4. Acepta:
 ```http
 POST /api/v1/integrations/telegram/accept

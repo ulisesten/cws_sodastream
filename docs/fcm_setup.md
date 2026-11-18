@@ -12,7 +12,7 @@ está en segundo plano, sin depender del bot de Telegram.
 ## Estado (2026-11-18)
 
 - [IMPLEMENTADO][servidor] emisor FCM/outbox, `/users/device` multi-dispositivo,
-  consulta de tokens activos y cancelación por `delivery.ack`.
+  consulta de tokens activos; `delivery.ack` solo cancela con `shown:true`.
 - [PARCIAL][servidor] tipos/preferencias/rate limit/métricas pendientes (ver
   `fcm_notifications.md` §10).
 - [PENDIENTE][cliente] Firebase/PushService en el APK; el actual no incluye
