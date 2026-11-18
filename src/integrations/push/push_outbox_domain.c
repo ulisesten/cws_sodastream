@@ -91,8 +91,15 @@ int push_outbox_enqueue(int64_t usu_id, const char* device_id,
                         const char* payload, const char* collapse,
                         const char* priority, int ttl, int delay_s,
                         const char* event_key) {
-    if (!g_sql || !device_id || !token || !type || !payload || !event_key)
+    if (!g_sql) {
+        cws_log_warn("push: outbox sin SQL");
         return 0;
+    }
+    if (!device_id || !token || !type || !payload || !event_key) {
+        cws_log_warn("push: enqueue datos incompletos event=%s",
+                     event_key ? event_key : "");
+        return 0;
+    }
     sql_param_t p[9];
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT,

@@ -103,6 +103,22 @@ int push_notify_user(int64_t usu_id, const char* event_key,
                      type, event_key ? event_key : "");
         return 0;
     }
+    /* El SP de tokens devuelve success=false si la rama tipo 4 no existe. */
+    for (size_t c = 0; c < devs->ncols; c++) {
+        if (devs->columns[c].name &&
+            strcmp(devs->columns[c].name, "success") == 0 &&
+            devs->nrows > 0) {
+            const sql_value_t* v = &devs->rows[0].cols[c];
+            if (!v->is_null && v->type == SQL_COL_STRING && v->val.as_string &&
+                strcmp(v->val.as_string, "false") == 0) {
+                cws_log_warn("push: tokens SP error event=%s msg=%s",
+                             event_key ? event_key : "",
+                             "tipoConsulta/SP no actualizado");
+                sql_result_free(devs);
+                return 0;
+            }
+        }
+    }
     int max_dev = cfg_int("FCM_MAX_DEVICES_PER_USER", 10);
     if (max_dev < 1) max_dev = 1;
     if (max_dev > 50) max_dev = 50;
