@@ -331,7 +331,9 @@ Pendiente:
 
 - Preferencias mute/DND, `message.silent` real, `message.summary`,
   `message.read`/`deleted` sync y `call.missed` por timeout.
-- El cliente debe implementar `delivery.ack`; sin ack, FCM se envía aunque el
+- El cliente **implementa** `delivery.ack` en `RealtimeClient` (se envía al
+  recibir `dm`/`call.incoming` con `event_id`, antes de despachar al UI, con el
+  `device_id` estable y deduplicación); sin ack, FCM se envía aunque el
   WSS haya entregado el evento.
 - Rate limit `FCM_RATE_PER_MINUTE`, métricas por tipo y limpieza programada.
 - Cifrado de `usd_push_token` en reposo.
