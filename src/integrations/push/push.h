@@ -11,6 +11,9 @@ int  push_init(void);
 void push_shutdown(void);
 int  push_enabled(void);
 
+/* FCM_ALWAYS=1: encolar aunque el receptor tenga WSS. */
+int  push_always(void);
+
 /* Encola un evento para todos los dispositivos activos del usuario.
  * Devuelve cuántos dispositivos se encolaron. */
 int push_notify_user(int64_t usu_id, const char* event_key,

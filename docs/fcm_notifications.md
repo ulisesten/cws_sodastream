@@ -7,7 +7,8 @@ Firebase) y `docs/endpoints.md`. Define **qué** notificaciones necesitamos,
 ## Estado
 
 - [IMPLEMENTADO][servidor] emisor FCM HTTP v1 con OAuth2, outbox y fan-out a
-  dispositivos; `call.incoming`/`cancel`/`ended` y `message` si no hay WSS.
+  dispositivos; `call.incoming`/`cancel`/`ended` y `message`. `FCM_ALWAYS`
+  (default true) envía aunque haya WSS.
 - [PARCIAL][servidor] catálogo básico; faltan preferencias mute/DND,
   `message.silent` real, `message.summary`, `read/deleted`, `call.missed`,
   rate limit, métricas y limpieza programada.
@@ -234,8 +235,9 @@ handler del cliente.
   M chats”.
 - Rate limit por usuario/chat (p. ej. 1 push cada 10 s con agregación) para
   evitar spam y ahorrar batería.
-- No enviar push si el WS del usuario está online y la app está en primer
-  plano (el servidor lo sabe por `ws_v1_user_online`).
+- `FCM_ALWAYS=true` (default) encola el push aunque el WS del usuario esté
+  online, para no perder avisos cuando el socket está vivo pero la app no
+  procesa. Con `FCM_ALWAYS=false` se omiten si `ws_v1_user_online` es true.
 
 ### 6.5 Abstracción de proveedor
 

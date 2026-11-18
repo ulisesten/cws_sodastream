@@ -299,19 +299,23 @@ int telegram_notify_bridge(int64_t usu_id, const char* from_public,
         free(body.data);
     }
 
-    int sent = 0;
-    if (!online) {
+    int always = push_always();
+    int pushed = 0;
+    if (!online || always) {
         char ev[160];
         snprintf(ev, sizeof(ev), "call:%s:incoming",
                  call_id ? call_id : "");
-        int pushed = push_notify_call(usu_id, call_id, from_name, from_public,
-                                      tipo, e2ee_v, ev, "call.incoming");
-        if (pushed > 0)
-            sent = 1; /* FCM encolado: no duplicar con Telegram */
+        pushed = push_notify_call(usu_id, call_id, from_name, from_public,
+                                  tipo, e2ee_v, ev, "call.incoming");
     }
-    if ((!online && sent == 0) || telegram_notify_always())
-        sent = telegram_notify_call(usu_id, from_name, call_id, tipo);
-    return sent;
+    int tg = 0;
+    if (pushed == 0 && (!online || always))
+        tg = telegram_notify_call(usu_id, from_name, call_id, tipo);
+    else if (telegram_notify_always())
+        tg = telegram_notify_call(usu_id, from_name, call_id, tipo);
+    cws_log_info("telegram: call.incoming online=%d always=%d fcm=%d telegram=%d",
+                 online, always, pushed, tg);
+    return pushed > 0 || tg;
 }
 
 static void bot_reply(int64_t chat_id, const char* text) {

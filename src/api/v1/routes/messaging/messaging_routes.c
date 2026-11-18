@@ -999,10 +999,13 @@ static CWS_HANDLER(messaging_send_handler) {
         sb_free(&w);
     }
 
-    /* Push FCM si el receptor no tiene WSS activo. */
-    if (!ws_v1_user_online(otro)) {
-        push_notify_message(otro, from, msg_id, u->usu_nombre, from,
-                            is_sticker ? "Sticker" : texto, 0);
+    /* Push FCM: siempre si FCM_ALWAYS, si no solo sin WSS. */
+    int online_otro = ws_v1_user_online(otro);
+    if (!online_otro || push_always()) {
+        int p = push_notify_message(otro, from, msg_id, u->usu_nombre, from,
+                                    is_sticker ? "Sticker" : texto, 0);
+        cws_log_info("messaging: push msg=%lld online=%d always=%d enqueued=%d",
+                     (long long)msg_id, online_otro, push_always(), p);
     }
 
     /* Respuesta HTTP con el mensaje creado. */

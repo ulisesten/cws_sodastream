@@ -155,6 +155,8 @@ const char* cfg_getenv(const char* key) {
             return env_get("FCM_MAX_DEVICES_PER_USER");
         case 0x45f28955u: /* FCM_RATE_PER_MINUTE */
             return env_get("FCM_RATE_PER_MINUTE");
+        case 0x487786cfu: /* FCM_ALWAYS */
+            return env_get("FCM_ALWAYS");
         default:
             return env_get(key);
     }

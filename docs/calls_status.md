@@ -95,7 +95,7 @@ cambios de API necesarios están en `docs/calls_e2ee_pending.md`.
     teléfono/IP → `usu_id_public` y recibir eventos; hoy solo hay link/notify.
 16. **Retención/privacidad**: purga de IP/teléfono, CDR y metadatos.
 17. **TURN**: cuotas, rotación de secreto, HA, métricas y certificados.
-18. **FCM**: emisor/outbox implementado; falta service account, preferencias y pruebas. APNs queda para después; Telegram sigue como fallback.
+18. **FCM**: emisor/outbox implementado con `FCM_ALWAYS`; falta service account, preferencias y pruebas. APNs queda para después; Telegram sigue como fallback.
 19. **GOST TLS/pinning** en el borde/cliente: objetivo; no es código de llamadas.
 
 ## Nota

@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "configuration.h"
+#include "cws/cws.h"
 #include "integrations/fcm/fcm.h"
 #include "integrations/push/push_outbox_domain.h"
 #include "api/v1/routes/users/domain/users_device_domain.h"
@@ -39,6 +40,13 @@ static int g_running = 0;
 static int g_started = 0;
 static pthread_t g_thread;
 static int g_enabled = 0;
+
+int push_always(void) {
+    const char* v = cfg_getenv("FCM_ALWAYS");
+    if (!v || !*v) return 1;
+    return !(strcmp(v, "0") == 0 || strcasecmp(v, "false") == 0 ||
+             strcasecmp(v, "no") == 0);
+}
 
 static int cfg_int(const char* key, int def) {
     const char* v = cfg_getenv(key);
@@ -88,7 +96,11 @@ int push_notify_user(int64_t usu_id, const char* event_key,
     int ttl = cat ? cat->ttl : 86400;
 
     sql_result_t* devs = users_devices_push_tokens(usu_id);
-    if (!devs) return 0;
+    if (!devs) {
+        cws_log_warn("push: type=%s event=%s sin consulta de tokens",
+                     type, event_key ? event_key : "");
+        return 0;
+    }
     int max_dev = cfg_int("FCM_MAX_DEVICES_PER_USER", 10);
     if (max_dev < 1) max_dev = 1;
     if (max_dev > 50) max_dev = 50;
@@ -114,7 +126,10 @@ int push_notify_user(int64_t usu_id, const char* event_key,
                                 collapse_key, priority, ttl, event_key))
             sent++;
     }
+    size_t ndev = devs->nrows;
     sql_result_free(devs);
+    cws_log_info("push: type=%s event=%s devices=%zu enqueued=%d",
+                 type, event_key ? event_key : "", ndev, sent);
     return sent;
 }
 
@@ -128,6 +143,8 @@ static void* worker(void* arg) {
     while (g_running) {
         push_outbox_item_t items[20];
         int n = push_outbox_claim(20, items, 20);
+        if (n > 0)
+            cws_log_info("push: worker claim=%d", n);
         for (int i = 0; i < n; i++) {
             char err[384];
             int rc = fcm_send(items[i].token, items[i].payload,
@@ -135,19 +152,27 @@ static void* worker(void* arg) {
                               items[i].collapse, err, sizeof(err));
             if (rc == FCM_SENT) {
                 push_outbox_mark(items[i].id, 2, NULL, 0);
+                cws_log_info("push: sent type=%s device=%s",
+                             items[i].type, items[i].device_id);
             } else if (rc == FCM_INVALID_TOKEN) {
                 push_outbox_mark(items[i].id, 4, err, 0);
                 users_devices_deactivate(items[i].usu_id,
                                          items[i].device_id);
-                fprintf(stderr, "push: token inválido, device desactivado\n");
+                cws_log_warn("push: token inválido device=%s; desactivado",
+                             items[i].device_id);
             } else {
                 int attempts = items[i].attempts + 1;
                 if (attempts >= 5) {
                     push_outbox_mark(items[i].id, 4, err, 0);
+                    cws_log_warn("push: dead type=%s device=%s error=%s",
+                                 items[i].type, items[i].device_id, err);
                 } else {
                     int retry = 15 * (1 << (attempts - 1));
                     if (retry > 300) retry = 300;
                     push_outbox_mark(items[i].id, 3, err, retry);
+                    cws_log_warn("push: retry type=%s device=%s attempt=%d error=%s",
+                                 items[i].type, items[i].device_id,
+                                 attempts, err);
                 }
             }
         }
@@ -166,6 +191,7 @@ int push_init(void) {
         return 0;
     }
     g_enabled = 1;
+    fprintf(stderr, "push: FCM_ALWAYS=%d\n", push_always());
     g_running = 1;
     if (pthread_create(&g_thread, NULL, worker, NULL) != 0) {
         g_enabled = 0;
