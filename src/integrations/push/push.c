@@ -201,6 +201,31 @@ static void* worker(void* arg) {
     return NULL;
 }
 
+/* Diagnóstico al arrancar: detecta SP de tokens ausente o viejo sin esperar
+ * a que alguien envíe un mensaje. */
+static void log_token_sp_state(void) {
+    sql_result_t* r = users_devices_push_tokens(0);
+    if (!r) {
+        fprintf(stderr, "push: token SP ausente; aplica db_sodastream/usuarios_devices.sql\n");
+        return;
+    }
+    int bad = 0;
+    for (size_t c = 0; c < r->ncols && r->nrows > 0; c++) {
+        if (!r->columns[c].name ||
+            strcmp(r->columns[c].name, "success") != 0)
+            continue;
+        const sql_value_t* v = &r->rows[0].cols[c];
+        if (!v->is_null && v->type == SQL_COL_STRING && v->val.as_string &&
+            strcmp(v->val.as_string, "true") != 0)
+            bad = 1;
+    }
+    if (bad)
+        fprintf(stderr, "push: token SP no actualizado (falta procPushTokensCons/tipo 4)\n");
+    else
+        fprintf(stderr, "push: token SP OK\n");
+    sql_result_free(r);
+}
+
 int push_init(void) {
     push_outbox_domain_init();
     fcm_init();
@@ -210,6 +235,7 @@ int push_init(void) {
         return 0;
     }
     g_enabled = 1;
+    log_token_sp_state();
     g_running = 1;
     if (pthread_create(&g_thread, NULL, worker, NULL) != 0) {
         g_enabled = 0;
