@@ -4,6 +4,12 @@ Servidor HTTP en C para SodaStream: usa el framework [`cws`](#submódulos) como
 submódulo, acceso a SQL Server por ODBC, autenticación web/móvil con tokens
 GOST, servidor estático HLS y configuración central por `.env`.
 
+## Estado de implementación
+
+La fuente única de estado (servidor/cliente/pendiente) es
+[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md). Las reglas
+de documentación para agentes están en [`AGENTS.md`](AGENTS.md).
+
 ## Layout
 
 ```

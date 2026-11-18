@@ -5,6 +5,10 @@ Fecha: 2026-11-18. Alcance: revisión estática de `mobile/` (Kotlin/JNI),
 despliegue. **No es un pentest dinámico**; no se probaron ataques en red ni
 explotación. Las rutas de evidencia son relativas a cada repo.
 
+> Estado central y responsable por plano:
+> `docs/IMPLEMENTATION_STATUS.md`. Los estados de este audit usan la misma
+> convención (`AGENTS.md`).
+
 ## Resumen ejecutivo
 
 | Severidad | Nº | Temas principales |

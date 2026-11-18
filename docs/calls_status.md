@@ -1,7 +1,7 @@
 # Estado de llamadas — servidor
 
-Actualizado: 2026-11-16. Complementa `docs/calls_proposal.md` y
-`docs/telegram_client.md`.
+Actualizado: 2026-11-18. Complementa `docs/calls_proposal.md`,
+`docs/telegram_client.md` y `docs/IMPLEMENTATION_STATUS.md`.
 
 ## Implementado
 

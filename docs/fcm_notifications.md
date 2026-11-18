@@ -4,6 +4,21 @@ Actualizado: 2026-11-18. Complementa `docs/fcm_setup.md` (cómo configurar
 Firebase) y `docs/endpoints.md`. Define **qué** notificaciones necesitamos,
 **cómo** se modelan y **cómo** escalar a nuevos tipos sin tocar el emisor.
 
+## Estado
+
+- [IMPLEMENTADO][servidor] emisor FCM HTTP v1 con OAuth2, outbox y fan-out a
+  dispositivos; `call.incoming`/`cancel`/`ended` y `message` si no hay WSS.
+- [PARCIAL][servidor] catálogo básico; faltan preferencias mute/DND,
+  `message.silent` real, `message.summary`, `read/deleted`, `call.missed`,
+  rate limit, métricas y limpieza programada.
+- [PENDIENTE][cliente] Firebase/PushService en el APK; el actual no lo incluye.
+- [PENDIENTE][OPS] service account `FCM_CREDENTIALS`, `FCM_PROJECT_ID` y prueba
+  E2E con dispositivo real.
+- [PENDIENTE][servidor] cifrado de `usd_push_token` en reposo.
+- Evidencia: `src/integrations/fcm`, `src/integrations/push`,
+  `db_sodastream/push_outbox.sql`, commit `779f11b`; estado central en
+  `docs/IMPLEMENTATION_STATUS.md`.
+
 ## 1. Objetivo
 
 Notificar al usuario en tiempo real cuando el WSS no está disponible (app en
