@@ -23,6 +23,15 @@ API/WSS.
 
 ---
 
+## Actualización de remediación (2026-11-18)
+
+- **C3 (RNG/IV) corregido** en el fork `webrtc-gost-build` commit
+  `027d75b`: el nonce inicial usa `RAND_bytes` (con fallback
+  `std::random_device`); se eliminó `srand(time(NULL))`/`rand()`. El AAR
+  `libwebrtc-gost.aar` se regenera y se sustituye en `app/libs/`; validar con
+  el test de loopback antes de distribuir.
+- El resto de hallazgos sigue abierto salvo que se indique lo contrario.
+
 ## Críticos
 
 ### C1. E2EE sin autenticación de identidad (MITM del signaling)
@@ -53,17 +62,18 @@ API/WSS.
   `cleartextTrafficPermitted="false"`; permitir solo `https`/`wss`; añadir
   pinning (con backup pin) para `cws.sodastream.fun`.
 
-### C3. RNG/IV débil en el fork del FrameCryptor
+### C3. RNG/IV débil en el fork del FrameCryptor — **CORREGIDO**
 
 - **Evidencia:** `webrtc-gost-build/src/api/crypto/frame_crypto_transformer.cc`
-  `makeIv()` usa `srand((unsigned)time(NULL)); rand() * 0xFFFF` para el
+  `makeIv()` usaba `srand((unsigned)time(NULL)); rand() * 0xFFFF` para el
   contador inicial.
 - **Impacto:** IV predecible/repetible entre procesos con la misma semilla;
-  con la misma clave compartida puede degradar la garantía del AEAD
+  con la misma clave compartida podía degradar la garantía del AEAD
   (Kuznyechik-CTR-ACPKM + CMAC).
-- **Solución:** `RAND_bytes`/`getrandom` para el arranque y contador
-  monotónico por SSRC/clave; test de unicidad tras reinicio y en llamadas
-  concurrentes; revisar el desbordamiento de 32 bits.
+- **Solución aplicada:** commit `027d75b`; `RAND_bytes` (BoringSSL) con
+  fallback `std::random_device`; se mantiene el contador monotónico de 32 bits
+  por SSRC. Pendiente: regenerar/sustituir el AAR de la app y añadir un test
+  de no-reutilización en CI.
 
 ---
 
