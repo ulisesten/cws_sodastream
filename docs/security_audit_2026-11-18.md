@@ -34,6 +34,67 @@ API/WSS.
   antes de distribuir.
 - El resto de hallazgos sigue abierto salvo que se indique lo contrario.
 
+## Estado de remediación y responsabilidad
+
+> Basado en el código de este workspace y en la evidencia del audit. El repo
+> del cliente Android no está en este workspace; los puntos “cliente” deben
+> confirmarse contra su commit/rama.
+
+| ID | Estado | Lado | Qué falta |
+|---|---|---|---|
+| C1 | **Parcial** | Servidor + cliente | Servidor: primitivas `gost_signature_*` y directorio `/calls/identity`; no hay firma ni verificación de `a=x-gost-identity` en `calls_sdp_handler`. Cliente: firmar el SDP, verificar contra `/calls/identity`, TOFU/safety number. Servidor: exigir/verificar si se quiere fail-closed. |
+| C2 | Pendiente | Cliente | `usesCleartextTraffic=false`, `cleartextTrafficPermitted=false`, solo `https`/`wss`, pinning. |
+| C3 | **Implementado (fork)** | Cliente | `RAND_bytes` en `027d75b`; AAR regenerado. Falta test de loopback en dispositivo y CI de no-reutilización. |
+| A1 | Pendiente | Servidor | Rate limit por IP/usuario/`call_id` en auth, notify, accept, messages, device, SDP/ICE; 429/Retry-After; cuotas TURN; límite de dispositivos. |
+| A2 | Pendiente | Ops/servidor | `.env` 600, propietario dedicado, `UMask=0077`, rotar secretos, no commitear. |
+| A3 | Pendiente | Cliente | `allowBackup=false` o excluir prefs/stickers; cifrar chat/calls. |
+| A4 | Pendiente | Cliente | Pinning con backup pin en API y WS; exigir `Sec-WebSocket-Accept`. |
+| A5 | Pendiente | Servidor | Rehash de hashes legacy al login; subir iteraciones; actualizar fila. |
+| A6 | Pendiente | Cliente | Key confirmation por DataChannel/API; ratchet con ventana. |
+| A7 | Pendiente | Cliente | Release firmada, R8, `debuggable=false`, `FLAG_SECURE`. |
+| A8 | Pendiente | Cliente/fork | PBKDF2/HKDF-Streebog-256; zeroización de `KeySet`; tests. |
+| M1 | Pendiente | Servidor + cliente | Contactos/opt-in, bloqueo/reporte, rate limit, no listar toda la base. |
+| M2 | Pendiente | Cliente | Notificaciones de mensajes `VISIBILITY_PRIVATE` + public version. |
+| M3 | Pendiente | Cliente | Validar `^[0-9a-f]{64}$` y canonicalizar stickers. |
+| M4 | Pendiente | Cliente | Validar `call_id`/`chat_id` del deep link antes de usarlo. |
+| M5 | Pendiente | Servidor + cliente | Cifrar `usd_push_token` en reposo, rotación, retención, límite por usuario. |
+| M6 | Pendiente | Servidor | FCM HTTP v1 con service account fuera del repo, data-only, multi-dispositivo, borrar tokens inválidos. |
+| M7 | Pendiente | Cliente/CI | AAR en Maven interno, pin de commit/hash, build reproducible, multi-ABI. |
+| M8 | Pendiente | Servidor + cliente | Validar base64/punto TC26-256-A en `/calls/identity`; TOFU. |
+| M9 | Pendiente | Servidor/ops | CORS allowlist (o desactivar en móvil), `TrustServerCertificate=false` + CA. |
+| B1 | Pendiente | Servidor + cliente | Logs de release sin tokens/huellas; no ampliar payloads. |
+| B2 | Pendiente | Cliente | Exigir `Sec-WebSocket-Accept` en el handshake. |
+| B3 | Pendiente | Cliente | `FLAG_SECURE` en chat/llamada. |
+| B4 | Pendiente | Cliente/ops | Restringir API key por package/SHA-1; `.gitignore` para `google-services.json`. |
+| B5 | Pendiente | Cliente/CI | Actualizar libs a 16 KB. |
+| B6 | Pendiente | Servidor/CI | SAST/DAST, dependency scanning, tests de autorización/rate limit. |
+
+### Firmas: qué está y qué no
+
+- **Implementado:** primitivas GOST R 34.10-2012 en `c_gost_encryption`
+  (`gost_signature_sign*`/`verify*`), directorio de claves públicas
+  `/api/v1/calls/identity`, capacidad E2EE y `call_id` de servidor.
+- **No implementado en el flujo de llamada:** el SDP solo lleva
+  `a=x-gost-e2ee:v1:<pub>`; no hay `a=x-gost-identity:v1:<sig>` ni
+  verificación en `calls_sdp_handler`; el cliente no usa el directorio para
+  TOFU/safety number.
+- **Cliente:** debe firmar el payload canónico (`v1|call_id|type|pub`),
+  publicar la firma en el SDP y verificar la del par con la clave de
+  `/calls/identity/:public`.
+
+### Falta de este lado (servidor)
+
+1. Rate limiting/429/cuotas TURN y límite de dispositivos (A1).
+2. Verificación/exigencia de firma SDP e identidad (C1) y validación de clave
+   en `/calls/identity` (M8); depende del formato que implemente el cliente.
+3. Rehash de hashes legacy en login (A5).
+4. Contactos/bloqueo y no enumeración de usuarios (M1).
+5. Cifrado/retención de `usd_push_token` (M5).
+6. FCM servidor (M6) y, si aplica, webhook/resolve externo.
+7. CORS/DB TLS (M9), `.env` (A2), logs (B1), CI/SAST (B6).
+8. CDR/multi-dispositivo de llamadas (fuera de este audit, pendiente ya
+   documentado en `docs/calls_status.md`).
+
 ## Críticos
 
 ### C1. E2EE sin autenticación de identidad (MITM del signaling)
