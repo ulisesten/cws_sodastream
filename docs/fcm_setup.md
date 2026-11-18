@@ -6,6 +6,9 @@ Actualizado: 2026-11-17. Complementa `docs/endpoints.md` (dispositivos) y
 Objetivo: recibir `call.incoming` y mensajes cuando el WSS está caído o la app
 está en segundo plano, sin depender del bot de Telegram.
 
+> Requerimiento funcional completo (tipos, payloads, silencio, agrupación y
+> escalabilidad): `docs/fcm_notifications.md`.
+
 ## Estado (2026-11-18)
 
 - **Mecanismo actual de notificaciones:** WSS (`call.incoming`) y Telegram

@@ -326,7 +326,9 @@ Requiere aplicar `db_sodastream/usuarios_devices.sql`
 `usuarios_device_id.sql` queda solo por compatibilidad.
 
 El flujo completo de push (FCM, token, HTTP v1, full-screen intent) está en
-`docs/fcm_setup.md`.
+`docs/fcm_setup.md`. Los tipos, payloads, canales y el diseño escalable
+(llamadas, mensajes, mensajes silenciosos, sync) están en
+`docs/fcm_notifications.md`.
 
 ### `POST /api/v1/auth/mobile/logout`
 Header **`Authorization: Bearer <access_token>`**. Rota el `usu_salt` del
