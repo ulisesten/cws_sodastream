@@ -35,6 +35,7 @@
 #include "configuration.h"
 #include "jwt.h"
 #include "ws_api/v1/ws_v1.h"
+#include "integrations/push/push.h"
 #include "../users/domain/users_domain.h"
 #include "domain/messaging_domain.h"
 
@@ -996,6 +997,12 @@ static CWS_HANDLER(messaging_send_handler) {
             ws_v1_emit_to_user(u->usu_id, "dm", w.data, w.len);
         }
         sb_free(&w);
+    }
+
+    /* Push FCM si el receptor no tiene WSS activo. */
+    if (!ws_v1_user_online(otro)) {
+        push_notify_message(otro, from, msg_id, u->usu_nombre, from,
+                            is_sticker ? "Sticker" : texto, 0);
     }
 
     /* Respuesta HTTP con el mensaje creado. */

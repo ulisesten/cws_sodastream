@@ -18,6 +18,7 @@
 #define CONS_ACTIVE 1
 #define CONS_ONE    2
 #define CONS_ALL    3
+#define CONS_PUSH   4
 
 static sql_eject_t* g_sql = NULL;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -102,6 +103,16 @@ sql_result_t* users_devices_list(int64_t usu_id, int active_only) {
     size_t n = 0;
     p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = active_only ? CONS_ACTIVE : CONS_ALL } };
+    p[n++] = (sql_param_t){ "usd_id_usuario", SQL_PT_INT,
+                            { .as_int = usu_id } };
+    return call_result("procUsersDevicesCons", p, n);
+}
+
+sql_result_t* users_devices_push_tokens(int64_t usu_id) {
+    sql_param_t p[2];
+    size_t n = 0;
+    p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
+                            { .as_int = CONS_PUSH } };
     p[n++] = (sql_param_t){ "usd_id_usuario", SQL_PT_INT,
                             { .as_int = usu_id } };
     return call_result("procUsersDevicesCons", p, n);

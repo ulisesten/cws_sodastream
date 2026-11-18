@@ -60,7 +60,7 @@ salt), autorización de participantes en SDP/ICE, validación de
 | M3 | Pendiente | Cliente | Validar `^[0-9a-f]{64}$` y canonicalizar stickers. |
 | M4 | Pendiente | Cliente | Validar `call_id`/`chat_id` del deep link antes de usarlo. |
 | M5 | Pendiente | Servidor + cliente | Cifrar `usd_push_token` en reposo, rotación, retención, límite por usuario. |
-| M6 | Pendiente | Servidor | FCM HTTP v1 con service account fuera del repo, data-only, multi-dispositivo, borrar tokens inválidos. |
+| M6 | Parcial | Servidor | Emisor FCM/outbox implementado; falta service account, preferencias, rate limit/métricas y pruebas reales. |
 | M7 | Pendiente | Cliente/CI | AAR en Maven interno, pin de commit/hash, build reproducible, multi-ABI. |
 | M8 | Pendiente | Servidor + cliente | Validar base64/punto TC26-256-A en `/calls/identity`; TOFU. |
 | M9 | Pendiente | Servidor/ops | CORS allowlist (o desactivar en móvil), `TrustServerCertificate=false` + CA. |
@@ -92,7 +92,7 @@ salt), autorización de participantes en SDP/ICE, validación de
 3. Rehash de hashes legacy en login (A5).
 4. Contactos/bloqueo y no enumeración de usuarios (M1).
 5. Cifrado/retención de `usd_push_token` (M5).
-6. FCM servidor (M6) y, si aplica, webhook/resolve externo.
+6. FCM servidor (M6): configuración/service account, preferencias y pruebas reales; el emisor/outbox ya existe.
 7. CORS/DB TLS (M9), `.env` (A2), logs (B1), CI/SAST (B6).
 8. CDR/multi-dispositivo de llamadas (fuera de este audit, pendiente ya
    documentado en `docs/calls_status.md`).

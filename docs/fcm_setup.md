@@ -19,9 +19,9 @@ está en segundo plano, sin depender del bot de Telegram.
   workspace.
 - **Endpoint `/users/device`:** implementado en la API; requiere desplegar el
   binario y aplicar `db_sodastream/usuarios_devices.sql`.
-- **Servidor FCM:** **no implementado**. Falta el service account
-  (`FCM_CREDENTIALS`), OAuth2 y el emisor HTTP v1; sin eso solo se puede
-  probar desde la consola de Firebase.
+- **Servidor FCM:** implementado en `src/integrations/fcm` + outbox
+  (`push_outbox.sql`). Falta configurar el service account
+  (`FCM_CREDENTIALS`), desplegar y probar; el emisor usa HTTP v1.
 - El token FCM (si la app lo obtiene) se guarda en `device_identity.xml` y se
   publica en `POST /users/device`; la tabla guarda `usd_push_token`, pero nada
   lo envía todavía.

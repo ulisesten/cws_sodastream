@@ -27,6 +27,7 @@
 #include "integrations/telegram/telegram.h"
 #include "integrations/telegram/telegram_domain.h"
 #include "integrations/telegram/telegram_calls.h"
+#include "integrations/push/push.h"
 #include "authorization.h"
 #include "authorization_mobile.h"
 #include "configuration.h"
@@ -129,6 +130,7 @@ int main(void) {
     telegram_domain_init();
     telegram_calls_init();
     calls_identity_domain_init();
+    push_init();
 
     /* Autenticación móvil (sin cookies): jwt_mobile + authorization_mobile. */
 
@@ -218,6 +220,7 @@ int main(void) {
     fprintf(stderr, "cws_sodastream starting on port %d (PORT from .env)\n",
             port);
     int rc = cws_app_run(g_app);
+    push_shutdown();
     telegram_shutdown();
     telegram_domain_shutdown();
     calls_identity_domain_shutdown();

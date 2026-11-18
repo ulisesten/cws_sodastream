@@ -22,6 +22,9 @@ sql_result_t* users_devices_upsert(int64_t usu_id, const char* device_id,
 sql_result_t* users_devices_list(int64_t usu_id, int active_only);
 sql_result_t* users_devices_get(int64_t usu_id, const char* device_id);
 
+/* Activos con push token: usd_device_id, usd_push_token. */
+sql_result_t* users_devices_push_tokens(int64_t usu_id);
+
 int users_devices_deactivate(int64_t usu_id, const char* device_id);
 int users_devices_delete(int64_t usu_id, const char* device_id);
 int users_devices_logout_all(int64_t usu_id);

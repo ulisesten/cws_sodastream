@@ -143,6 +143,18 @@ const char* cfg_getenv(const char* key) {
             return env_get("CALL_E2EE_REQUIRED");
         case 0x38cde61bu: /* CALL_ID_SERVER */
             return env_get("CALL_ID_SERVER");
+        case 0xd558e0ffu: /* FCM_ENABLED */
+            return env_get("FCM_ENABLED");
+        case 0xf7af9049u: /* FCM_PROJECT_ID */
+            return env_get("FCM_PROJECT_ID");
+        case 0x0e6b2754u: /* FCM_CREDENTIALS */
+            return env_get("FCM_CREDENTIALS");
+        case 0xc177dd39u: /* FCM_DRY_RUN */
+            return env_get("FCM_DRY_RUN");
+        case 0xdf6168fau: /* FCM_MAX_DEVICES_PER_USER */
+            return env_get("FCM_MAX_DEVICES_PER_USER");
+        case 0x45f28955u: /* FCM_RATE_PER_MINUTE */
+            return env_get("FCM_RATE_PER_MINUTE");
         default:
             return env_get(key);
     }

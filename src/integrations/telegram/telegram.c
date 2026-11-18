@@ -17,6 +17,7 @@
 #include "configuration.h"
 #include "cws/cws.h"
 #include "ws_api/v1/ws_v1.h"
+#include "integrations/push/push.h"
 
 #define TG_MAX_RESPONSE (4u * 1024u * 1024u)
 #define TG_DEFAULT_API  "https://api.telegram.org"
@@ -299,7 +300,16 @@ int telegram_notify_bridge(int64_t usu_id, const char* from_public,
     }
 
     int sent = 0;
-    if (!online || telegram_notify_always())
+    if (!online) {
+        char ev[160];
+        snprintf(ev, sizeof(ev), "call:%s:incoming",
+                 call_id ? call_id : "");
+        int pushed = push_notify_call(usu_id, call_id, from_name, from_public,
+                                      tipo, e2ee_v, ev, "call.incoming");
+        if (pushed > 0)
+            sent = 1; /* FCM encolado: no duplicar con Telegram */
+    }
+    if ((!online && sent == 0) || telegram_notify_always())
         sent = telegram_notify_call(usu_id, from_name, call_id, tipo);
     return sent;
 }

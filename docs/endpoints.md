@@ -714,4 +714,12 @@ TURN_TTL_SECONDS=3600
 # E2EE / identidad
 CALL_E2EE_REQUIRED=true
 CALL_ID_SERVER=true
+
+# FCM (push)
+FCM_ENABLED=false
+FCM_PROJECT_ID=<project-id>
+FCM_CREDENTIALS=/etc/cws/fcm-service-account.json
+FCM_DRY_RUN=false
+FCM_MAX_DEVICES_PER_USER=10
+FCM_RATE_PER_MINUTE=60
 ```

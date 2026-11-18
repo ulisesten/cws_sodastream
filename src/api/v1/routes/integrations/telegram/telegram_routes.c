@@ -15,6 +15,7 @@
 #include "integrations/telegram/telegram.h"
 #include "integrations/telegram/telegram_domain.h"
 #include "integrations/telegram/telegram_calls.h"
+#include "integrations/push/push.h"
 #include "integrations/telegram/telegram_json.h"
 #include "ws_api/v1/ws_v1.h"
 #include "api/v1/routes/users/domain/users_domain.h"
@@ -586,6 +587,8 @@ static CWS_HANDLER(telegram_reject_handler) {
     snprintf(evt, sizeof(evt),
              "{\"call_id\":\"%s\",\"estado\":\"rejected\"}", call_id);
     emit_event(call.caller_uid, "call.rejected", evt);
+    if (!ws_v1_user_online(call.caller_uid))
+        push_notify_call_event(call.caller_uid, call_id, "call.cancel");
     free(body); free(call_id);
     send_json(res, 200,
               "{\"success\":true,\"error\":0,\"data\":{\"estado\":\"rejected\"}}");
@@ -618,6 +621,8 @@ static CWS_HANDLER(telegram_end_handler) {
     snprintf(evt, sizeof(evt),
              "{\"call_id\":\"%s\",\"estado\":\"ended\"}", call_id);
     emit_event(other, "call.ended", evt);
+    if (!ws_v1_user_online(other))
+        push_notify_call_event(other, call_id, "call.ended");
     free(body); free(call_id);
     send_json(res, 200,
               "{\"success\":true,\"error\":0,\"data\":{\"estado\":\"ended\"}}");

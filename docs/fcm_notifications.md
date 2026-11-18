@@ -288,16 +288,33 @@ FCM_DRY_RUN=false
 - Multi-dispositivo: el mismo usuario puede recibir en varios; el cliente
   ignora eventos ya aplicados (`event_id`/`msg_id`).
 
-## 10. Implementación pendiente en la API
+## 10. Implementación en la API (estado 2026-11-18)
 
-1. Módulo `fcm` (OAuth2 + HTTP v1 + reintentos) y `push_outbox`.
-2. Consulta de tokens activos por usuario en `users_device_domain`.
-3. En `telegram_notify_bridge`: `call.incoming`/`call.cancel` si
-   `ws_online=false`.
-4. En `POST /conversations/:public/messages`: `message`/`message.silent` si el
-   receptor no está online; `message.read`/`deleted` para sync.
-5. Preferencias de mute/DND y catálogo de tipos.
-6. Métricas y limpieza de tokens.
+Implementado:
+
+1. Módulo `fcm` con OAuth2 (JWT RS256 + token cache), HTTP v1, data-only,
+   `android.priority/ttl/collapse_key`, dry-run y detección de tokens
+   inválidos (`src/integrations/fcm`).
+2. Outbox `opr_push_outbox` + `procPushOutboxProc/Cons` y worker en
+   `src/integrations/push` con reintentos/backoff.
+3. Consulta de tokens activos (`procUsersDevicesCons` tipo 4,
+   `users_devices_push_tokens`).
+4. `telegram_notify_bridge`: `call.incoming` por FCM si `ws_online=false`;
+   Telegram solo si no hay FCM/tokens.
+5. `reject`/`end`: `call.cancel`/`call.ended` a la contraparte si no tiene WSS.
+6. `POST /conversations/:public/messages`: `message` al receptor si no está
+   online.
+
+Pendiente:
+
+- Preferencias mute/DND, `message.silent` real, `message.summary`,
+  `message.read`/`deleted` sync y `call.missed` por timeout.
+- Rate limit `FCM_RATE_PER_MINUTE`, métricas por tipo y limpieza programada.
+- Cifrado de `usd_push_token` en reposo.
+- Cliente: el APK actual no incluye Firebase; ver `docs/fcm_setup.md`.
+
+Requiere aplicar `db_sodastream/usuarios_devices.sql` (tipo 4) y
+`db_sodastream/push_outbox.sql`, configurar `FCM_*` y el service account.
 
 ## 11. Matriz de pruebas
 
