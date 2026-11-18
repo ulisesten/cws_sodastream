@@ -104,7 +104,7 @@ Común (data-only, < 4 KB):
   "silent": false,
   "chat_id": "Ny5IiLev59ia",
   "msg_id": 12345,
-  "from": "ChatA",
+  "sender": "ChatA",
   "from_public": "Ny5IiLev59ia",
   "title": "ChatA",
   "body": "Hola",
@@ -120,7 +120,7 @@ Llamada:
   "type": "call.incoming",
   "event_id": "evt_...",
   "call_id": "6fJ...",
-  "from": "ChatB",
+  "sender": "ChatB",
   "from_public": "tejRZUY7HpSu",
   "tipo": "video",
   "e2ee": true,
@@ -134,6 +134,10 @@ Llamada:
 Reglas:
 
 - `type` es obligatorio y versionado con `v`.
+- **Claves reservadas por FCM**: `data` no puede incluir `from`, `message_type`
+  ni claves que empiecen por `google.`/`gcm.`; FCM responde
+  `400 Invalid data payload key`. Por eso el nombre del emisor viaja en
+  `sender` (no en `from`).
 - `event_id` único (ULID/UUID) para deduplicar; `dedupe_key` estable por
   entidad (llamada/mensaje) para reemplazos.
 - `priority`: `high` **solo** llamadas/cancelaciones; el resto `normal`.

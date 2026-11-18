@@ -277,7 +277,7 @@ int push_notify_call(int64_t usu_id, const char* call_id,
     char payload[1024];
     snprintf(payload, sizeof(payload),
              "{\"v\":\"1\",\"type\":\"%s\",\"event_id\":\"%s\","
-             "\"ts\":\"%lld\",\"call_id\":\"%s\",\"from\":\"%s\","
+             "\"ts\":\"%lld\",\"call_id\":\"%s\",\"sender\":\"%s\","
              "\"from_public\":\"%s\",\"tipo\":\"%s\",\"e2ee\":\"%s\","
              "\"priority\":\"high\",\"ttl\":\"60\",\"silent\":\"false\","
              "\"deep_link\":\"%s\"}",
@@ -324,7 +324,7 @@ int push_notify_message(int64_t usu_id, const char* chat_public,
     snprintf(payload, sizeof(payload),
              "{\"v\":\"1\",\"type\":\"%s\",\"event_id\":\"%s\","
              "\"ts\":\"%lld\",\"dedupe_key\":\"%s\",\"chat_id\":\"%s\","
-             "\"msg_id\":\"%lld\",\"from\":\"%s\",\"from_public\":\"%s\","
+             "\"msg_id\":\"%lld\",\"sender\":\"%s\",\"from_public\":\"%s\","
              "\"title\":\"%s\",\"body\":\"%s\",\"silent\":\"%s\","
              "\"deep_link\":\"%s\"}",
              silent ? "message.silent" : "message", ev,

@@ -166,7 +166,8 @@ class PushService : FirebaseMessagingService() {
 - El `call_id` y `from_public` van en `data`; la app abre la llamada con
   `recoverCall(callId)` / `GET /calls/:id` y el WSS.
 - Un `data` de llamada debe ser pequeño (<4 KB): `type`, `call_id`,
-  `from`, `from_public`, `tipo`, `e2ee`.
+  `sender`, `from_public`, `tipo`, `e2ee`. **No uses `from`**: es una clave
+  reservada de FCM y el envío falla con `400 Invalid data payload key`.
 
 ### 1.5 Registro del token
 
@@ -196,7 +197,7 @@ adb logcat | grep -iE "firebase|FCM|PushService"
 - Firebase Console → Messaging → “Send test message” al token.
 - Data de prueba:
   ```json
-  { "type": "call", "call_id": "abc123", "from": "ChatB",
+  { "type": "call", "call_id": "abc123", "sender": "ChatB",
     "from_public": "tejRZUY7HpSu", "tipo": "video", "e2ee": "1" }
   ```
 - Verificar: notificación con pantalla completa, sonido, deep link y que la
@@ -233,7 +234,7 @@ Content-Type: application/json
     "data": {
       "type": "call",
       "call_id": "<call_id>",
-      "from": "<nombre>",
+      "sender": "<nombre>",
       "from_public": "<public_id>",
       "tipo": "video",
       "e2ee": "1"
