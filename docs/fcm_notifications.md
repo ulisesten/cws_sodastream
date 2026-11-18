@@ -44,6 +44,10 @@ sin cambiar el emisor.
   = añadir una entrada de catálogo (+ handler de UI si es visible).
 - **Idempotencia**: `event_id`/`dedupe_key` (p. ej. `call_id`, `msg_id`) y
   outbox; FCM puede entregar duplicados.
+- **Ack = entregado visible**: el cliente solo manda `delivery.ack` cuando el
+  mensaje ya se pintó en el chat abierto o cuando la notificación se publicó
+  realmente. Un frame WS recibido pero no visible (app cerrada, ViewModel
+  muerto, notificación bloqueada) **no se ackea**; FCM hace el fallback.
 - **Entrega WSS + ack**: el servidor no decide por `ws_online`; encola FCM con
   retardo (`FCM_ACK_TIMEOUT_MS`, default 2 s). Si el cliente envía
   `delivery.ack` con `event_id`+`device_id`, se cancela el push de ese
@@ -245,7 +249,8 @@ handler del cliente.
 - Rate limit por usuario/chat (p. ej. 1 push cada 10 s con agregación) para
   evitar spam y ahorrar batería.
 - **No se decide por `ws_v1_user_online`.** Se emite WSS, se encola FCM con
-  retardo (`FCM_ACK_TIMEOUT_MS`) y el cliente confirma con `delivery.ack`; si
+  retardo (`FCM_ACK_TIMEOUT_MS`) y el cliente confirma con `delivery.ack`
+  **solo después de pintar/notificar**; si
   no hay ack, sale FCM. Un socket vivo sin ack no cuenta como entregado.
 
 ### 6.5 Abstracción de proveedor
@@ -335,9 +340,10 @@ Pendiente:
 
 - Preferencias mute/DND, `message.silent` real, `message.summary`,
   `message.read`/`deleted` sync y `call.missed` por timeout.
-- El cliente **implementa** `delivery.ack` en `RealtimeClient` (se envía al
-  recibir `dm`/`call.incoming` con `event_id`, antes de despachar al UI, con el
-  `device_id` estable y deduplicación); sin ack, FCM se envía aunque el
+- El cliente **implementa** `delivery.ack` en `RealtimeClient`; lo invocan los
+  handlers **después** de mostrar el mensaje/notificación (o la pantalla de
+  llamada), con el `device_id` estable y deduplicación. Sin ack (app cerrada,
+  sin UI/notificación), FCM se envía aunque el
   WSS haya entregado el evento.
 - Rate limit `FCM_RATE_PER_MINUTE`, métricas por tipo y limpieza programada.
 - Cifrado de `usd_push_token` en reposo.
