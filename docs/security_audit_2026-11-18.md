@@ -9,17 +9,17 @@ explotación. Las rutas de evidencia son relativas a cada repo.
 
 | Severidad | Nº | Temas principales |
 |---|---:|---|
-| Crítica | 3 | Autenticación de identidad E2EE, cleartext, RNG/IV del FrameCryptor |
+| Crítica | 2 abiertas (+1 corregida) | Identidad E2EE y cleartext; RNG/IV corregido en el fork (C3) |
 | Alta | 8 | Rate limiting, secretos `.env`, backup, pinning, hashes legacy, release/debug, confirmación/ratchet, zeroización/derivación |
 | Media | 9 | Notificaciones, sticker paths, enumeración/spam, deep link, tokens push en BD, AAR/fork, FCM servidor, TURN/STUN, CORS |
 | Baja | 6 | Logs, handshake WS, FLAG_SECURE, API key, 16 KB, CI |
 
 Controles positivos: tokens cifrados con Android Keystore (AES-GCM),
 PBKDF2-HMAC-Streebog + salt + pepper para hashes nuevos, comparación en tiempo
-constante, refresh con rotación de `usu_salt`, autorización de participantes en
-SDP/ICE, validación de `call_id`/`public_id`/sticker id, límites de tamaño,
-E2EE fail-closed, `FrameCryptor` descarta frames sin clave y TLS estándar en
-API/WSS.
+constante, refresh con validación de `usu_salt` (el logout global rota el
+salt), autorización de participantes en SDP/ICE, validación de
+`call_id`/`public_id`/sticker id, límites de tamaño, E2EE fail-closed,
+`FrameCryptor` descarta frames sin clave y TLS estándar en API/WSS.
 
 ---
 
@@ -36,9 +36,11 @@ API/WSS.
 
 ## Estado de remediación y responsabilidad
 
-> Basado en el código de este workspace y en la evidencia del audit. El repo
-> del cliente Android no está en este workspace; los puntos “cliente” deben
-> confirmarse contra su commit/rama.
+> Revisado contra el código de este workspace. La API está en
+> `cws_sodastream` y el cliente Android en
+> `/home/ulises/AndroidStudioProjects/mobile` (repo aparte, pero accesible en
+> el mismo workspace). Los estados “cliente” se comprobaron en el árbol actual;
+> no hay un commit del cliente que fijar todavía.
 
 | ID | Estado | Lado | Qué falta |
 |---|---|---|---|
@@ -135,8 +137,9 @@ API/WSS.
   (Kuznyechik-CTR-ACPKM + CMAC).
 - **Solución aplicada:** commit `027d75b`; `RAND_bytes` (BoringSSL) con
   fallback `std::random_device`; se mantiene el contador monotónico de 32 bits
-  por SSRC. Pendiente: regenerar/sustituir el AAR de la app y añadir un test
-  de no-reutilización en CI.
+  por SSRC. El AAR se regeneró y se copió a `app/libs/` (sha256
+  `4375f2486aac8d94d5d6…`); la app compila. Pendiente: test de loopback en
+  dispositivo (sin dispositivos `adb` ahora) y test de no-reutilización en CI.
 
 ---
 
@@ -372,8 +375,8 @@ API/WSS.
 
 1. C1/A6: identidad GOST persistente, firma/verificación SDP, TOFU +
    safety number, confirmación de clave y ratchet.
-2. C3/A8: RNG/IV con `RAND_bytes`/getrandom, derivación Streebog en el fork,
-   zeroización y tests.
+2. A8: derivación Streebog en el fork, zeroización y tests. (C3 RNG/IV ya
+   está implementado en `027d75b`; falta validarlo en dispositivo.)
 3. A4: pinning con backup pin y validación estricta del handshake.
 4. A7: build release firmada + R8; dejar de distribuir debug.
 5. M6: FCM servidor (service account) con HTTP v1 y multi-dispositivo.
