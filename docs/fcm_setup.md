@@ -22,6 +22,56 @@ está en segundo plano, sin depender del bot de Telegram.
 - [PENDIENTE][servidor] cifrado de `usd_push_token` en reposo.
 - Estado central: `docs/IMPLEMENTATION_STATUS.md`.
 
+## 0. SQL requerido y verificación
+
+El servidor consulta tokens con `procUsersDevicesCons @tipoConsulta=4` y encola
+en `opr_push_outbox`. Si el SP desplegado es una versión vieja, no devuelve
+tokens y el log muestra `push: ... devices=1 enqueued=0` (la fila `devices=1`
+es la fila `success=false` del SP, no un dispositivo).
+
+Aplicar **con un login con DDL**, en este orden:
+
+```bash
+sqlcmd -S <server> -d soda_stream -i db_sodastream/usuarios_devices.sql
+sqlcmd -S <server> -d soda_stream -i db_sodastream/push_outbox.sql
+```
+
+Ambos scripts son idempotentes: crean/actualizan columnas faltantes y terminan
+con una verificación que **falla** (`RAISERROR`) si el SP instalado quedó sin
+la rama tipo 4 o sin retardo/cancelación. Si se aplicó una copia vieja del
+archivo, la verificación lo delata.
+
+Verificación manual:
+
+```sql
+-- Debe devolver usd_device_id y usd_push_token (0 filas si el usuario no tiene token).
+EXEC dbo.procUsersDevicesCons @tipoConsulta=4, @usd_id_usuario=<id>;
+
+-- Debe devolver 'SI'.
+SELECT CASE WHEN OBJECT_DEFINITION(OBJECT_ID('dbo.procUsersDevicesCons'))
+                 LIKE '%@PUSH_TOKENS%' THEN 'SI' ELSE 'NO' END AS tipo4;
+SELECT CASE WHEN OBJECT_DEFINITION(OBJECT_ID('dbo.procPushOutboxProc'))
+                 LIKE '%@po_delay_s%' THEN 'SI' ELSE 'NO' END AS outbox_delay;
+```
+
+Prueba segura del outbox (no envía nada porque el retardo es de 1 hora):
+
+```sql
+EXEC dbo.procPushOutboxProc @tipoProceso=1, @po_event_key='selftest:enqueue',
+    @po_id_usuario=<id>, @po_device_id='<device>', @po_token='fake',
+    @po_type='message', @po_payload='{"v":"1"}', @po_delay_s=3600;
+EXEC dbo.procPushOutboxProc @tipoProceso=7, @po_event_key='selftest:enqueue',
+    @po_id_usuario=<id>, @po_device_id='<device>';
+```
+
+Log esperado al enviar un mensaje o llamada:
+
+```text
+push: type=message event=msg:<id> devices=1 enqueued=1 delay=2s
+push: worker claim=1
+push: sent type=message device=<device> code=200
+```
+
 ## 1. Cliente Android
 
 ### 1.1 Firebase
