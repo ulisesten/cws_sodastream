@@ -29,7 +29,7 @@ No sustituye a los documentos de detalle; los enlaza.
 | WSS `call.incoming` / `dm` | [IMPLEMENTADO] | Servidor | app abierta/conectada |
 | Telegram link + deep link | [IMPLEMENTADO] | Servidor | `telegram_bot.md` |
 | Multi-dispositivo (`/users/device`) | [IMPLEMENTADO] | Servidor | `usuarios_devices.sql` |
-| FCM emisor (OAuth2/HTTP v1), outbox, call/message, ack | [PARCIAL] | Servidor | `9a3a7f4` + ack; SP `procUsersDevicesCons` tipo 4 y outbox retardo/cancel verificados en BD el 2026-11-18. Scripts con migración idempotente y verificación (`RAISERROR` si el SP quedó viejo). Falta service account, preferencias, rate limit, E2E. |
+| FCM emisor (OAuth2/HTTP v1), outbox, call/message, ack | [PARCIAL] | Servidor | `9a3a7f4` + ack; SP dedicado `procPushTokensCons` (y tipo 4 de compatibilidad) verificado en BD el 2026-11-18. Solo dos scripts canónicos: `usuarios_devices.sql` y `push_outbox.sql`, idempotentes y con verificación (`RAISERROR`). Falta service account, preferencias, rate limit, E2E. |
 | FCM cliente (Firebase/PushService + delivery.ack) | [IMPLEMENTADO] | Cliente | `RealtimeClient` ackea `dm`/`call.incoming` con `event_id`+`device_id` al recibir el WSS; Firebase/PushService ya está. Falta instalar/probar el APK. |
 | Tipos silenciosos/summary/read/deleted/missed | [PENDIENTE] | Servidor + cliente | `fcm_notifications.md` |
 | Cifrado de `usd_push_token` en reposo | [PENDIENTE] | Servidor | M5 |

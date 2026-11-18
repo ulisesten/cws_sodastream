@@ -29,25 +29,36 @@ en `opr_push_outbox`. Si el SP desplegado es una versión vieja, no devuelve
 tokens y el log muestra `push: ... devices=1 enqueued=0` (la fila `devices=1`
 es la fila `success=false` del SP, no un dispositivo).
 
-Aplicar **con un login con DDL**, en este orden:
+Solo existen **dos** archivos canónicos. No hay parches aparte: todo cambio
+va en estos archivos y se aplican completos, con un login con DDL, en orden:
 
 ```bash
 sqlcmd -S <server> -d soda_stream -i db_sodastream/usuarios_devices.sql
 sqlcmd -S <server> -d soda_stream -i db_sodastream/push_outbox.sql
 ```
 
-Ambos scripts son idempotentes: crean/actualizan columnas faltantes y terminan
-con una verificación que **falla** (`RAISERROR`) si el SP instalado quedó sin
-la rama tipo 4 o sin retardo/cancelación. Si se aplicó una copia vieja del
-archivo, la verificación lo delata.
+Son idempotentes: crean/actualizan columnas faltantes y terminan con una
+verificación que **falla** (`RAISERROR`) si falta algo. Aplicar una copia
+vieja deja el SP anterior y la verificación lo delata.
+
+`usuarios_devices.sql` instala:
+
+- `procUsersDevicesProc` (alta/desactiva/borra dispositivos).
+- `procUsersDevicesCons` con `@PUSH_TOKENS=4` (compatibilidad).
+- `procPushTokensCons` (SP dedicado que usa el servidor; una copia vieja de
+  `procUsersDevicesCons` ya no lo puede romper).
 
 Verificación manual:
 
 ```sql
--- Debe devolver usd_device_id y usd_push_token (0 filas si el usuario no tiene token).
+-- Ambos deben devolver usd_device_id y usd_push_token
+-- (0 filas si el usuario no tiene token registrado).
+EXEC dbo.procPushTokensCons @usu_id=<id>;
 EXEC dbo.procUsersDevicesCons @tipoConsulta=4, @usd_id_usuario=<id>;
 
--- Debe devolver 'SI'.
+-- Deben devolver 'SI'.
+SELECT CASE WHEN OBJECT_ID('dbo.procPushTokensCons','P') IS NOT NULL
+                 THEN 'SI' ELSE 'NO' END AS dedicado;
 SELECT CASE WHEN OBJECT_DEFINITION(OBJECT_ID('dbo.procUsersDevicesCons'))
                  LIKE '%@PUSH_TOKENS%' THEN 'SI' ELSE 'NO' END AS tipo4;
 SELECT CASE WHEN OBJECT_DEFINITION(OBJECT_ID('dbo.procPushOutboxProc'))

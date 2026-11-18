@@ -108,14 +108,37 @@ sql_result_t* users_devices_list(int64_t usu_id, int active_only) {
     return call_result("procUsersDevicesCons", p, n);
 }
 
+/* Un SP de consulta devuelve success=false en una fila de error. */
+static int result_is_error(const sql_result_t* out) {
+    if (!out || out->nrows == 0) return 0;
+    for (size_t c = 0; c < out->ncols; c++) {
+        if (!out->columns[c].name ||
+            strcmp(out->columns[c].name, "success") != 0)
+            continue;
+        const sql_value_t* v = &out->rows[0].cols[c];
+        return !v->is_null && v->type == SQL_COL_STRING &&
+               v->val.as_string && strcmp(v->val.as_string, "true") != 0;
+    }
+    return 0;
+}
+
 sql_result_t* users_devices_push_tokens(int64_t usu_id) {
-    sql_param_t p[2];
+    /* SP dedicado: no depende del dispatch de procUsersDevicesCons, así que
+     * reaplicar una copia vieja de usuarios_devices.sql no lo rompe. */
+    sql_param_t p[1];
+    p[0] = (sql_param_t){ "usu_id", SQL_PT_INT, { .as_int = usu_id } };
+    sql_result_t* r = call_result("procPushTokensCons", p, 1);
+    if (r && !result_is_error(r)) return r;
+    sql_result_free(r);
+
+    /* Compatibilidad con el SP con dispatch tipoConsulta=4. */
+    sql_param_t q[2];
     size_t n = 0;
-    p[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
+    q[n++] = (sql_param_t){ "tipoConsulta", SQL_PT_INT,
                             { .as_int = CONS_PUSH } };
-    p[n++] = (sql_param_t){ "usd_id_usuario", SQL_PT_INT,
+    q[n++] = (sql_param_t){ "usd_id_usuario", SQL_PT_INT,
                             { .as_int = usu_id } };
-    return call_result("procUsersDevicesCons", p, n);
+    return call_result("procUsersDevicesCons", q, n);
 }
 
 sql_result_t* users_devices_get(int64_t usu_id, const char* device_id) {

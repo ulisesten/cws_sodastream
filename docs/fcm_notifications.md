@@ -339,8 +339,10 @@ Pendiente:
 - Cifrado de `usd_push_token` en reposo.
 - Cliente: el APK actual no incluye Firebase; ver `docs/fcm_setup.md`.
 
-Requiere aplicar `db_sodastream/usuarios_devices.sql` (tipo 4) y
-`db_sodastream/push_outbox.sql`, configurar `FCM_*` y el service account.
+Requiere aplicar los dos scripts canónicos
+`db_sodastream/usuarios_devices.sql` (incluye `procPushTokensCons` y tipo 4)
+y `db_sodastream/push_outbox.sql`, configurar `FCM_*` y el service account.
+No hay parches SQL aparte; ambos son idempotentes y se auto-verifican.
 
 ## 11. Matriz de pruebas
 
