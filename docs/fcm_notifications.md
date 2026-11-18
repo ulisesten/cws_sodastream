@@ -7,8 +7,8 @@ Firebase) y `docs/endpoints.md`. Define **qué** notificaciones necesitamos,
 ## Estado
 
 - [IMPLEMENTADO][servidor] emisor FCM HTTP v1 con OAuth2, outbox y fan-out a
-  dispositivos; `call.incoming`/`cancel`/`ended` y `message`. `FCM_ALWAYS`
-  (default true) envía aunque haya WSS.
+  dispositivos; `call.incoming`/`cancel`/`ended` y `message`, con retardo y
+  cancelación por `delivery.ack`.
 - [PARCIAL][servidor] catálogo básico; faltan preferencias mute/DND,
   `message.silent` real, `message.summary`, `read/deleted`, `call.missed`,
   rate limit, métricas y limpieza programada.
@@ -44,6 +44,11 @@ sin cambiar el emisor.
   = añadir una entrada de catálogo (+ handler de UI si es visible).
 - **Idempotencia**: `event_id`/`dedupe_key` (p. ej. `call_id`, `msg_id`) y
   outbox; FCM puede entregar duplicados.
+- **Entrega WSS + ack**: el servidor no decide por `ws_online`; encola FCM con
+  retardo (`FCM_ACK_TIMEOUT_MS`, default 2 s). Si el cliente envía
+  `delivery.ack` con `event_id`+`device_id`, se cancela el push de ese
+  dispositivo; si no, FCM lo envía. Un socket vivo sin ack **no** cuenta como
+  entregado.
 - **Colapso**: `collapse_key` por llamada/chat para no apilar notificaciones.
 - **Multi-dispositivo**: fan-out a todos los dispositivos activos del usuario;
   excluir el dispositivo emisor cuando se conozca.
@@ -235,9 +240,9 @@ handler del cliente.
   M chats”.
 - Rate limit por usuario/chat (p. ej. 1 push cada 10 s con agregación) para
   evitar spam y ahorrar batería.
-- `FCM_ALWAYS=true` (default) encola el push aunque el WS del usuario esté
-  online, para no perder avisos cuando el socket está vivo pero la app no
-  procesa. Con `FCM_ALWAYS=false` se omiten si `ws_v1_user_online` es true.
+- **No se decide por `ws_v1_user_online`.** Se emite WSS, se encola FCM con
+  retardo (`FCM_ACK_TIMEOUT_MS`) y el cliente confirma con `delivery.ack`; si
+  no hay ack, sale FCM. Un socket vivo sin ack no cuenta como entregado.
 
 ### 6.5 Abstracción de proveedor
 
@@ -316,16 +321,18 @@ Implementado:
    `src/integrations/push` con reintentos/backoff.
 3. Consulta de tokens activos (`procUsersDevicesCons` tipo 4,
    `users_devices_push_tokens`).
-4. `telegram_notify_bridge`: `call.incoming` por FCM si `ws_online=false`;
-   Telegram solo si no hay FCM/tokens.
-5. `reject`/`end`: `call.cancel`/`call.ended` a la contraparte si no tiene WSS.
-6. `POST /conversations/:public/messages`: `message` al receptor si no está
-   online.
+4. `telegram_notify_bridge`: emite WSS, encola FCM con retardo y espera
+   `delivery.ack`; Telegram solo si FCM no encoló.
+5. `reject`/`end`: `call.cancel`/`call.ended` a la contraparte.
+6. `POST /conversations/:public/messages`: `message` con retardo y
+   `delivery.ack` para cancelar.
 
 Pendiente:
 
 - Preferencias mute/DND, `message.silent` real, `message.summary`,
   `message.read`/`deleted` sync y `call.missed` por timeout.
+- El cliente debe implementar `delivery.ack`; sin ack, FCM se envía aunque el
+  WSS haya entregado el evento.
 - Rate limit `FCM_RATE_PER_MINUTE`, métricas por tipo y limpieza programada.
 - Cifrado de `usd_push_token` en reposo.
 - Cliente: el APK actual no incluye Firebase; ver `docs/fcm_setup.md`.

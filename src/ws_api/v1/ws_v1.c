@@ -32,6 +32,8 @@
 #include <time.h>
 
 #include "authorization_mobile.h"
+#include "jwt.h"
+#include "integrations/push/push_outbox_domain.h"
 
 #define WS_V1_PATH        "/ws/v1"
 #define WS_V1_LOBBY       "lobby"
@@ -374,6 +376,31 @@ static void ws_on_message(cws_ws_socket_t* s, const char* event,
     free(esc_room);
 }
 
+/* delivery.ack {event_id, device_id?} -> cancela el push pendiente. */
+static void ws_on_delivery_ack(cws_ws_socket_t* s, const char* event,
+                              const void* data, size_t len, void* ud) {
+    (void)event; (void)ud;
+    ws_identity_t* id = (ws_identity_t*)cws_ws_socket_data(s);
+    if (!id || !data || len == 0 || len > 2048) return;
+    char* z = (char*)malloc(len + 1);
+    if (!z) return;
+    memcpy(z, data, len);
+    z[len] = '\0';
+    char* event_id = NULL;
+    char* device_id = NULL;
+    jwt_json_get_string(z, "event_id", &event_id);
+    jwt_json_get_string(z, "device_id", &device_id);
+    if (event_id && *event_id) {
+        int ok = push_outbox_cancel(id->usu_id, event_id, device_id);
+        cws_log_info("ws delivery.ack event=%s device=%s cancelled=%d",
+                     event_id, device_id ? device_id : "",
+                     ok);
+    }
+    free(event_id);
+    free(device_id);
+    free(z);
+}
+
 /* whoami -> identity <json> */
 static void ws_on_whoami(cws_ws_socket_t* s, const char* event,
                          const void* data, size_t len, void* ud) {
@@ -443,6 +470,7 @@ int ws_v1_init(cws_app_t* app) {
     cws_ws_on(g_ws, "leave", ws_on_leave, NULL);
     cws_ws_on(g_ws, "message", ws_on_message, NULL);
     cws_ws_on(g_ws, "whoami", ws_on_whoami, NULL);
+    cws_ws_on(g_ws, "delivery.ack", ws_on_delivery_ack, NULL);
     cws_ws_on(g_ws, "stats", ws_on_stats, NULL);
     cws_ws_on_message(g_ws, ws_on_raw_message, NULL);
     cws_ws_on_close(g_ws, ws_close, NULL);

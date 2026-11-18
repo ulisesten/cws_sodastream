@@ -514,10 +514,11 @@ static int build_ws_dm(strbuf_t* b, int64_t msg_id, const char* from,
     char* jtexto = json_escape_dup(texto ? texto : "");
     int ok = jfrom && jnombre && jtexto &&
              sb_printf(b,
-                       "{\"msg_id\":%lld,\"from\":%s,\"from_nombre\":%s,"
+                       "{\"msg_id\":%lld,\"event_id\":\"msg:%lld\","
+                       "\"from\":%s,\"from_nombre\":%s,"
                        "\"tipo\":\"%s\",\"sticker_id\":%s,\"texto\":%s,"
                        "\"fecha\":\"%s\",\"reply_to\":%s",
-                       (long long)msg_id, jfrom, jnombre,
+                       (long long)msg_id, (long long)msg_id, jfrom, jnombre,
                        is_sticker ? "sticker" : "text", sid_field, jtexto,
                        fecha, rbuf);
     if (ok && sticker_json[0]) ok = sb_puts(b, sticker_json);
@@ -999,14 +1000,12 @@ static CWS_HANDLER(messaging_send_handler) {
         sb_free(&w);
     }
 
-    /* Push FCM: siempre si FCM_ALWAYS, si no solo sin WSS. */
+    /* FCM con retardo; delivery.ack cancela si el WSS fue entregado. */
     int online_otro = ws_v1_user_online(otro);
-    if (!online_otro || push_always()) {
-        int p = push_notify_message(otro, from, msg_id, u->usu_nombre, from,
-                                    is_sticker ? "Sticker" : texto, 0);
-        cws_log_info("messaging: push msg=%lld online=%d always=%d enqueued=%d",
-                     (long long)msg_id, online_otro, push_always(), p);
-    }
+    int p = push_notify_message(otro, from, msg_id, u->usu_nombre, from,
+                                is_sticker ? "Sticker" : texto, 0);
+    cws_log_info("messaging: push msg=%lld online=%d enqueued=%d",
+                 (long long)msg_id, online_otro, p);
 
     /* Respuesta HTTP con el mensaje creado. */
     char rbuf[32], sid_field[96], sticker_json[640];

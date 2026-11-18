@@ -275,7 +275,9 @@ int telegram_notify_bridge(int64_t usu_id, const char* from_public,
         body.cap = 256;
         buf_puts(&body, "{\"call_id\":\"");
         json_escape_into(&body, call_id ? call_id : "");
-        buf_puts(&body, "\",\"from_public\":\"");
+        buf_puts(&body, "\",\"event_id\":\"call:");
+        json_escape_into(&body, call_id ? call_id : "");
+        buf_puts(&body, ":incoming\",\"from_public\":\"");
         json_escape_into(&body, (from_public && *from_public) ? from_public : "");
         buf_puts(&body, "\",\"from\":\"");
         json_escape_into(&body, (from_name && *from_name) ? from_name : "");
@@ -299,22 +301,17 @@ int telegram_notify_bridge(int64_t usu_id, const char* from_public,
         free(body.data);
     }
 
-    int always = push_always();
-    int pushed = 0;
-    if (!online || always) {
-        char ev[160];
-        snprintf(ev, sizeof(ev), "call:%s:incoming",
-                 call_id ? call_id : "");
-        pushed = push_notify_call(usu_id, call_id, from_name, from_public,
+    /* No se decide por ws_online: se encola FCM con retardo y el cliente
+     * cancela con delivery.ack si recibió el WSS. */
+    char ev[160];
+    snprintf(ev, sizeof(ev), "call:%s:incoming", call_id ? call_id : "");
+    int pushed = push_notify_call(usu_id, call_id, from_name, from_public,
                                   tipo, e2ee_v, ev, "call.incoming");
-    }
     int tg = 0;
-    if (pushed == 0 && (!online || always))
+    if (pushed == 0 || telegram_notify_always())
         tg = telegram_notify_call(usu_id, from_name, call_id, tipo);
-    else if (telegram_notify_always())
-        tg = telegram_notify_call(usu_id, from_name, call_id, tipo);
-    cws_log_info("telegram: call.incoming online=%d always=%d fcm=%d telegram=%d",
-                 online, always, pushed, tg);
+    cws_log_info("telegram: call.incoming online=%d fcm=%d telegram=%d",
+                 online, pushed, tg);
     return pushed > 0 || tg;
 }
 

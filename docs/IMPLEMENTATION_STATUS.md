@@ -29,8 +29,8 @@ No sustituye a los documentos de detalle; los enlaza.
 | WSS `call.incoming` / `dm` | [IMPLEMENTADO] | Servidor | app abierta/conectada |
 | Telegram link + deep link | [IMPLEMENTADO] | Servidor | `telegram_bot.md` |
 | Multi-dispositivo (`/users/device`) | [IMPLEMENTADO] | Servidor | `usuarios_devices.sql` |
-| FCM emisor (OAuth2/HTTP v1), outbox, call/message | [PARCIAL] | Servidor | `779f11b`; falta service account, preferencias, rate limit, E2E |
-| FCM cliente (Firebase/PushService) | [PENDIENTE] | Cliente | el APK actual no incluye Firebase |
+| FCM emisor (OAuth2/HTTP v1), outbox, call/message, ack | [PARCIAL] | Servidor | `9a3a7f4` + ack; falta service account, preferencias, rate limit, E2E |
+| FCM cliente (Firebase/PushService + delivery.ack) | [PENDIENTE] | Cliente | el APK actual no incluye Firebase; debe ackear |
 | Tipos silenciosos/summary/read/deleted/missed | [PENDIENTE] | Servidor + cliente | `fcm_notifications.md` |
 | Cifrado de `usd_push_token` en reposo | [PENDIENTE] | Servidor | M5 |
 | Rate limiting global / cuotas TURN | [PENDIENTE] | Servidor | A1 |

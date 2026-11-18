@@ -41,12 +41,6 @@ static int g_started = 0;
 static pthread_t g_thread;
 static int g_enabled = 0;
 
-int push_always(void) {
-    const char* v = cfg_getenv("FCM_ALWAYS");
-    if (!v || !*v) return 1;
-    return !(strcmp(v, "0") == 0 || strcasecmp(v, "false") == 0 ||
-             strcasecmp(v, "no") == 0);
-}
 
 static int cfg_int(const char* key, int def) {
     const char* v = cfg_getenv(key);
@@ -60,6 +54,14 @@ static const push_catalog_t* catalog_for(const char* type) {
         if (type && strcmp(type, g_catalog[i].type) == 0)
             return &g_catalog[i];
     return NULL;
+}
+
+static int ack_delay_s(void) {
+    const char* v = cfg_getenv("FCM_ACK_TIMEOUT_MS");
+    int ms = (v && *v) ? atoi(v) : 2000;
+    if (ms < 500) ms = 500;
+    if (ms > 10000) ms = 10000;
+    return (ms + 999) / 1000;
 }
 
 static void json_escape(char* out, size_t cap, const char* s) {
@@ -88,7 +90,7 @@ static void json_escape(char* out, size_t cap, const char* s) {
 
 int push_notify_user(int64_t usu_id, const char* event_key,
                      const char* type, const char* payload_json,
-                     const char* collapse_key) {
+                     const char* collapse_key, int delay_s) {
     if (!g_enabled || !fcm_enabled() || !type || !payload_json)
         return 0;
     const push_catalog_t* cat = catalog_for(type);
@@ -123,13 +125,14 @@ int push_notify_user(int64_t usu_id, const char* event_key,
         }
         if (!device || !*device || !token || !*token) continue;
         if (push_outbox_enqueue(usu_id, device, token, type, payload_json,
-                                collapse_key, priority, ttl, event_key))
+                                collapse_key, priority, ttl, delay_s,
+                                event_key))
             sent++;
     }
     size_t ndev = devs->nrows;
     sql_result_free(devs);
-    cws_log_info("push: type=%s event=%s devices=%zu enqueued=%d",
-                 type, event_key ? event_key : "", ndev, sent);
+    cws_log_info("push: type=%s event=%s devices=%zu enqueued=%d delay=%ds",
+                 type, event_key ? event_key : "", ndev, sent, delay_s);
     return sent;
 }
 
@@ -191,7 +194,6 @@ int push_init(void) {
         return 0;
     }
     g_enabled = 1;
-    fprintf(stderr, "push: FCM_ALWAYS=%d\n", push_always());
     g_running = 1;
     if (pthread_create(&g_thread, NULL, worker, NULL) != 0) {
         g_enabled = 0;
@@ -242,7 +244,7 @@ int push_notify_call(int64_t usu_id, const char* call_id,
     char collapse[96];
     snprintf(collapse, sizeof(collapse), "call:%s", c);
     return push_notify_user(usu_id, event_key, type ? type : "call.incoming",
-                            payload, collapse);
+                            payload, collapse, ack_delay_s());
 }
 
 int push_notify_call_event(int64_t usu_id, const char* call_id,
@@ -260,7 +262,7 @@ int push_notify_call_event(int64_t usu_id, const char* call_id,
              type, ev, (long long)time(NULL), c, e);
     char collapse[96];
     snprintf(collapse, sizeof(collapse), "call:%s", c);
-    return push_notify_user(usu_id, ev, type, payload, collapse);
+    return push_notify_user(usu_id, ev, type, payload, collapse, 0);
 }
 
 int push_notify_message(int64_t usu_id, const char* chat_public,
@@ -289,5 +291,5 @@ int push_notify_message(int64_t usu_id, const char* chat_public,
     char collapse[96];
     snprintf(collapse, sizeof(collapse), "chat:%s", chat);
     return push_notify_user(usu_id, ev, silent ? "message.silent" : "message",
-                            payload, collapse);
+                            payload, collapse, ack_delay_s());
 }

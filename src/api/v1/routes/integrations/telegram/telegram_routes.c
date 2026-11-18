@@ -587,7 +587,7 @@ static CWS_HANDLER(telegram_reject_handler) {
     snprintf(evt, sizeof(evt),
              "{\"call_id\":\"%s\",\"estado\":\"rejected\"}", call_id);
     emit_event(call.caller_uid, "call.rejected", evt);
-    if (!ws_v1_user_online(call.caller_uid) || push_always()) {
+    {
         int p = push_notify_call_event(call.caller_uid, call_id, "call.cancel");
         cws_log_info("calls: call.cancel push=%d", p);
     }
@@ -623,7 +623,7 @@ static CWS_HANDLER(telegram_end_handler) {
     snprintf(evt, sizeof(evt),
              "{\"call_id\":\"%s\",\"estado\":\"ended\"}", call_id);
     emit_event(other, "call.ended", evt);
-    if (!ws_v1_user_online(other) || push_always()) {
+    {
         int p = push_notify_call_event(other, call_id, "call.ended");
         cws_log_info("calls: call.ended push=%d", p);
     }

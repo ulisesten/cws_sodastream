@@ -17,6 +17,7 @@
 #define PROC_MARK_RETRY 3
 #define PROC_MARK_DEAD 4
 #define PROC_CLAIM 5
+#define PROC_CANCEL 7
 
 static sql_eject_t* g_sql = NULL;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -88,7 +89,7 @@ void push_outbox_domain_shutdown(void) {
 int push_outbox_enqueue(int64_t usu_id, const char* device_id,
                         const char* token, const char* type,
                         const char* payload, const char* collapse,
-                        const char* priority, int ttl,
+                        const char* priority, int ttl, int delay_s,
                         const char* event_key) {
     if (!g_sql || !device_id || !token || !type || !payload || !event_key)
         return 0;
@@ -113,14 +114,23 @@ int push_outbox_enqueue(int64_t usu_id, const char* device_id,
     p[n++] = (sql_param_t){ "po_priority", SQL_PT_STRING,
                             { .as_string = priority ? priority : "normal" } };
     /* ttl needs one more slot */
-    sql_param_t all[10];
+    sql_param_t all[11];
     memcpy(all, p, sizeof(p));
     all[n++] = (sql_param_t){ "po_ttl", SQL_PT_INT, { .as_int = ttl } };
+    all[n++] = (sql_param_t){ "po_delay_s", SQL_PT_INT,
+                              { .as_int = delay_s > 0 ? delay_s : 0 } };
 
     sql_result_t out;
     memset(&out, 0, sizeof(out));
     int rc = run_sp("procPushOutboxProc", all, n, &out);
     int ok = (rc == 0) && row_ok(&out);
+    if (rc != 0) {
+        cws_log_warn("push: enqueue SQL error event=%s", event_key);
+    } else if (!ok) {
+        const char* msg = row_str(&out, 0, "msg");
+        cws_log_warn("push: enqueue rechazado event=%s msg=%s", event_key,
+                     msg ? msg : "?");
+    }
     sql_result_free(&out);
     return ok;
 }
@@ -177,6 +187,26 @@ int push_outbox_mark(int64_t id, int status, const char* error, int retry_s) {
                             { .as_string = error } };
     p[n++] = (sql_param_t){ "po_retry_s", SQL_PT_INT,
                             { .as_int = retry_s > 0 ? retry_s : 30 } };
+    sql_result_t out;
+    memset(&out, 0, sizeof(out));
+    int rc = run_sp("procPushOutboxProc", p, n, &out);
+    int ok = (rc == 0) && row_ok(&out);
+    sql_result_free(&out);
+    return ok;
+}
+
+int push_outbox_cancel(int64_t usu_id, const char* event_key,
+                       const char* device_id) {
+    if (!g_sql || !event_key || !*event_key) return 0;
+    sql_param_t p[4];
+    size_t n = 0;
+    p[n++] = (sql_param_t){ "tipoProceso", SQL_PT_INT, { .as_int = PROC_CANCEL } };
+    p[n++] = (sql_param_t){ "po_event_key", SQL_PT_STRING,
+                            { .as_string = event_key } };
+    p[n++] = (sql_param_t){ "po_id_usuario", SQL_PT_INT, { .as_int = usu_id } };
+    p[n++] = (sql_param_t){ "po_device_id",
+                            (device_id && *device_id) ? SQL_PT_STRING : SQL_PT_NULL,
+                            { .as_string = device_id } };
     sql_result_t out;
     memset(&out, 0, sizeof(out));
     int rc = run_sp("procPushOutboxProc", p, n, &out);

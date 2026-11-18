@@ -34,7 +34,7 @@ void push_outbox_domain_shutdown(void);
 int push_outbox_enqueue(int64_t usu_id, const char* device_id,
                         const char* token, const char* type,
                         const char* payload, const char* collapse,
-                        const char* priority, int ttl,
+                        const char* priority, int ttl, int delay_s,
                         const char* event_key);
 
 /* Devuelve cuántos items reclamó. */
@@ -42,6 +42,8 @@ int push_outbox_claim(int limit, push_outbox_item_t* out, size_t max);
 
 /* status: 2 sent, 3 retry, 4 dead. */
 int push_outbox_mark(int64_t id, int status, const char* error, int retry_s);
+int push_outbox_cancel(int64_t usu_id, const char* event_key,
+                       const char* device_id);
 
 #ifdef __cplusplus
 }
